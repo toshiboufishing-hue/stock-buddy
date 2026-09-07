@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <meta name="theme-color" content="#101417" />
+  <title>相棒 STOCK</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div>
+      <div class="eyebrow">お小遣い運用モード</div>
+      <h1>相棒 STOCK</h1>
+    </div>
+    <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
+  </header>
+
+  <main>
+    <section class="hero card">
+      <div>
+        <div class="muted">運用資産</div>
+        <div id="totalValue" class="big">¥0</div>
+        <div id="totalPnl" class="pnl">±¥0（0.0%）</div>
+      </div>
+      <div class="hero-badge">
+        <span>AI総合</span>
+        <strong id="overallSignal">様子見</strong>
+      </div>
+    </section>
+
+    <section class="grid-2">
+      <button class="quick card" data-tab="radar">
+        <span class="quick-icon">🚀</span>
+        <span><strong>化け株レーダー</strong><small>初動・資金流入を探す</small></span>
+      </button>
+      <button class="quick card" data-tab="sns">
+        <span class="quick-icon">🔎</span>
+        <span><strong>SNS銘柄判定</strong><small>伏せ銘柄も候補推定</small></span>
+      </button>
+    </section>
+
+    <section id="portfolio" class="panel active">
+      <div class="section-head">
+        <div><h2>保有株</h2><p>買い・温める・利確・逃げるを一目で</p></div>
+        <button id="addHoldingBtn" class="small-btn">＋追加</button>
+      </div>
+      <div id="holdingsList" class="stack"></div>
+    </section>
+
+    <section id="radar" class="panel">
+      <div class="section-head">
+        <div><h2>化け株レーダー</h2><p>安い株ではなく「理由が出始めた株」を監視</p></div>
+      </div>
+      <div id="radarList" class="stack"></div>
+    </section>
+
+    <section id="sns" class="panel">
+      <div class="section-head">
+        <div><h2>SNS銘柄判定</h2><p>投稿文を貼るだけ。試作ではルールベース判定。</p></div>
+      </div>
+      <div class="card input-card">
+        <label for="snsText">SNS投稿を貼り付け</label>
+        <textarea id="snsText" rows="7" placeholder="例：いま注目の低位株。大手○○と共同開発、来期量産予定…"></textarea>
+        <button id="analyzeSnsBtn" class="primary">AI判定する</button>
+      </div>
+      <div id="snsResult"></div>
+    </section>
+
+    <section id="settings" class="panel">
+      <div class="section-head"><div><h2>設定</h2><p>試作1号の連携状況</p></div></div>
+      <div class="card settings-card">
+        <div class="setting-row"><span>moomoo自動同期</span><span class="tag warn">次段階</span></div>
+        <div class="setting-row"><span>PayPay保有株取込</span><span class="tag warn">次段階</span></div>
+        <div class="setting-row"><span>リアルタイムAI分析</span><span class="tag warn">次段階</span></div>
+        <div class="setting-row"><span>専用音プッシュ通知</span><span class="tag ok">通知テスト可</span></div>
+        <div class="setting-row"><span>ローカル保存</span><span class="tag ok">有効</span></div>
+      </div>
+      <button id="resetBtn" class="danger">試作データを初期化</button>
+    </section>
+  </main>
+
+  <nav class="bottom-nav">
+    <button class="nav-btn active" data-tab="portfolio"><span>💼</span><small>保有株</small></button>
+    <button class="nav-btn" data-tab="radar"><span>🚀</span><small>レーダー</small></button>
+    <button class="nav-btn" data-tab="sns"><span>🔎</span><small>SNS</small></button>
+    <button class="nav-btn" data-tab="settings"><span>⚙️</span><small>設定</small></button>
+  </nav>
+
+  <dialog id="holdingDialog">
+    <form method="dialog" id="holdingForm">
+      <h3>保有株を追加</h3>
+      <label>証券会社<select id="broker"><option>PayPay証券</option><option>moomoo証券</option></select></label>
+      <label>銘柄名<input id="name" required placeholder="例：ABCテクノ" /></label>
+      <label>コード<input id="ticker" required placeholder="例：1234" /></label>
+      <label>保有数<input id="qty" type="number" step="0.0001" min="0" required /></label>
+      <label>平均取得単価<input id="avg" type="number" step="0.01" min="0" required /></label>
+      <label>現在値<input id="price" type="number" step="0.01" min="0" required /></label>
+      <div class="dialog-actions"><button value="cancel">キャンセル</button><button id="saveHolding" value="default" class="primary">保存</button></div>
+    </form>
+  </dialog>
+
+  <script src="app.js"></script>
+</body>
+</html>
