@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#101417" />
   <title>相棒 STOCK</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=0.4.0" />
+  <link rel="stylesheet" href="styles.css?v=0.54.0" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.53</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.54</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -86,7 +86,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.53 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.54 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -114,8 +114,8 @@
       <input id="holdingEditIndex" type="hidden" value="" />
       <label>証券会社<select id="broker"><option>PayPay証券</option><option>moomoo証券</option><option>その他</option></select></label>
       <label>市場<select id="market"><option value="JP">日本株</option><option value="US">米国株</option></select></label>
-      <label>銘柄名<input id="name" required placeholder="例：○○株式会社" /></label>
       <label>コード<input id="ticker" required inputmode="text" placeholder="例：7203 / AAPL" /></label>
+      <label>銘柄名<input id="name" required placeholder="日本株はコード入力で自動表示" /></label>
       <label>保有数<input id="qty" type="number" step="0.0001" min="0" required /></label>
       <label>評価額<input id="holdingValue" type="number" step="0.01" min="0" required placeholder="例：124725" /></label>
       <label>評価損益<input id="holdingPnl" type="text" inputmode="decimal" required placeholder="例：-14860 / －14860" /></label>
@@ -137,14 +137,14 @@
     <form method="dialog" id="watchForm">
       <h3>監視銘柄を追加</h3>
       <label>市場<select id="watchMarket"><option value="JP">日本株</option><option value="US">米国株</option></select></label>
-      <label>銘柄名<input id="watchName" required placeholder="例：○○テクノ" /></label>
       <label>コード<input id="watchTicker" required placeholder="例：1234 / ABCD" /></label>
+      <label>銘柄名<input id="watchName" required placeholder="日本株はコード入力で自動表示" /></label>
       <label>現在値（任意）<input id="watchPrice" type="number" step="0.01" min="0" /></label>
       <label>気になる理由<input id="watchReason" placeholder="例：出来高増加、IR待ち" /></label>
       <div class="dialog-actions"><button value="cancel">キャンセル</button><button value="default" class="primary">保存</button></div>
     </form>
   </dialog>
 
-  <script src="app.js?v=0.4.0"></script>
+  <script src="app.js?v=0.54.0"></script>
 </body>
 </html>

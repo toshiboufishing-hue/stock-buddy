@@ -1,4 +1,4 @@
-const APP_VERSION='0.52.0';
+const APP_VERSION='0.54.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -19,6 +19,82 @@ function loadData(){
 const yen=n=>'¥'+Number(n||0).toLocaleString('ja-JP',{maximumFractionDigits:2});
 const money=(n,market)=>market==='US'?'$'+Number(n||0).toLocaleString('en-US',{maximumFractionDigits:2}):yen(n);
 const signalMap={buy:['🚀','買い候補','buy'],hold:['🔥','保有継続','hold'],wait:['⚪','様子見','wait'],take:['💰','利確検討','take'],escape:['🚨','売却警戒','escape']};
+
+// 日本株コード → 銘柄名（無料・キー不要）
+// JPXデータを日次更新している公開CSVを1回だけ取得し、端末内にもキャッシュする。
+const COMPANY_MASTER_URL='https://te-chan.github.io/JP-CompanyCode/company_list.csv';
+const COMPANY_MASTER_CACHE='stockBuddyCompanyMasterV1';
+let companyMaster=null;
+let companyMasterPromise=null;
+
+function parseCsvLine(line){
+  const out=[]; let cur=''; let quoted=false;
+  for(let i=0;i<line.length;i++){
+    const ch=line[i];
+    if(ch==='"'){
+      if(quoted && line[i+1]==='"'){cur+='"';i++;}
+      else quoted=!quoted;
+    }else if(ch===',' && !quoted){out.push(cur);cur='';}
+    else cur+=ch;
+  }
+  out.push(cur); return out;
+}
+function csvToCompanyMap(text){
+  const lines=text.replace(/^\uFEFF/,'').split(/\r?\n/).filter(Boolean);
+  if(!lines.length)return{};
+  const header=parseCsvLine(lines[0]).map(v=>v.trim().toLowerCase());
+  const codeIndex=header.indexOf('code'),nameIndex=header.indexOf('name');
+  if(codeIndex<0||nameIndex<0)return{};
+  const map={};
+  for(const line of lines.slice(1)){
+    const cols=parseCsvLine(line),code=(cols[codeIndex]||'').trim().toUpperCase(),name=(cols[nameIndex]||'').trim();
+    if(code&&name)map[code]=name;
+  }
+  return map;
+}
+async function loadCompanyMaster(){
+  if(companyMaster)return companyMaster;
+  if(companyMasterPromise)return companyMasterPromise;
+  companyMasterPromise=(async()=>{
+    try{
+      const res=await fetch(COMPANY_MASTER_URL,{cache:'no-store'});
+      if(!res.ok)throw new Error('company master fetch failed');
+      const map=csvToCompanyMap(await res.text());
+      if(!Object.keys(map).length)throw new Error('company master empty');
+      companyMaster=map;
+      try{localStorage.setItem(COMPANY_MASTER_CACHE,JSON.stringify({savedAt:Date.now(),map}));}catch(e){}
+      return map;
+    }catch(e){
+      try{
+        const cached=JSON.parse(localStorage.getItem(COMPANY_MASTER_CACHE)||'null');
+        if(cached?.map){companyMaster=cached.map;return companyMaster;}
+      }catch(_){}
+      // 最低限、登録済み銘柄はネット不調時でも補完できる。
+      companyMaster={'7011':'三菱重工業','5016':'JX金属'};
+      return companyMaster;
+    }
+  })();
+  return companyMasterPromise;
+}
+async function autofillCompanyName(tickerInput,nameInput,marketSelect){
+  if((marketSelect?.value||'JP')!=='JP')return;
+  const code=tickerInput.value.trim().normalize('NFKC').toUpperCase();
+  if(!/^(?:\d{4}|\d{3}[A-Z])$/.test(code))return;
+  tickerInput.value=code;
+  const map=await loadCompanyMaster();
+  const found=map[code];
+  if(found)nameInput.value=found;
+}
+function setupCompanyLookup(tickerId,nameId,marketId){
+  const ticker=document.querySelector(tickerId),name=document.querySelector(nameId),market=document.querySelector(marketId);
+  if(!ticker||!name||!market)return;
+  let timer;
+  const run=()=>autofillCompanyName(ticker,name,market);
+  ticker.addEventListener('input',()=>{clearTimeout(timer);timer=setTimeout(run,350);});
+  ticker.addEventListener('blur',run);
+  market.addEventListener('change',run);
+}
+
 
 function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
 function esc(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
@@ -77,6 +153,8 @@ function renderTotals(){
 
 function switchTab(id){document.querySelectorAll('.panel').forEach(p=>p.classList.toggle('active',p.id===id));document.querySelectorAll('.nav-btn').forEach(b=>b.classList.toggle('active',b.dataset.tab===id));scrollTo({top:0,behavior:'smooth'});}
 document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()=>switchTab(b.dataset.tab)));
+setupCompanyLookup('#ticker','#name','#market');
+setupCompanyLookup('#watchTicker','#watchName','#watchMarket');
 
 const holdingDialog=document.querySelector('#holdingDialog');
 document.querySelector('#addHoldingBtn').onclick=()=>{document.querySelector('#holdingForm').reset();document.querySelector('#holdingEditIndex').value='';document.querySelector('#holdingDialogTitle').textContent='保有株を追加';holdingDialog.showModal();};
