@@ -1,4 +1,4 @@
-const APP_VERSION='0.59.0';
+const APP_VERSION='0.60.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -387,6 +387,61 @@ function runStartupResearch(){
 
 document.querySelector('#rerunResearchBtn').onclick=runStartupResearch;
 document.querySelector('#shareResearchBtn').onclick=shareResearchPrompt;
+
+
+// v0.60: SNSスクリーンショットをAndroid共有で画像AIへ渡す（画像は端末内のみ）
+let snsImageFile=null;
+let snsImageUrl=null;
+const snsImageInput=document.querySelector('#snsImageInput');
+const selectSnsImageBtn=document.querySelector('#selectSnsImageBtn');
+const shareSnsImageBtn=document.querySelector('#shareSnsImageBtn');
+const snsImagePreview=document.querySelector('#snsImagePreview');
+const snsShareStatus=document.querySelector('#snsShareStatus');
+
+function resetSnsPreview(){
+  if(snsImageUrl){URL.revokeObjectURL(snsImageUrl);snsImageUrl=null;}
+  snsImageFile=null;
+  snsImageInput.value='';
+  snsImagePreview.className='sns-image-preview empty';
+  snsImagePreview.innerHTML='<span>まだ画像が選ばれていません</span>';
+  shareSnsImageBtn.disabled=true;
+  snsShareStatus.textContent='スクショを選ぶと、Androidの共有画面からChatGPT等へ画像＋判定指示を送れます。';
+}
+function buildSnsImagePrompt(){
+  const hint=document.querySelector('#snsHint').value.trim();
+  const known=[...data.holdings.map(h=>`${h.market} ${h.ticker} ${h.name}`),...data.radar.map(r=>`${r.market} ${r.ticker} ${r.name}`)].slice(0,30).join(' / ');
+  return `【相棒STOCK SNSスクショ判定】\n添付画像はSNS投稿のスクリーンショットです。画像内の文字・投稿内容・銘柄を読み取り、煽りに流されず裏取り前提で分析してください。\n\n必須:\n1. 推定銘柄名・証券コード（不明なら候補を最大3つ）\n2. 推定確度 0〜100% と、その根拠\n3. 投稿が主張する材料・カタリスト\n4. 「絶対上がる」「10倍」等の煽り/誘導表現と危険度\n5. 投稿日時や価格など、画像から読める鮮度情報\n6. 最新のIR・適時開示・会社発表・信頼できるニュースで裏取り。確認できない主張は未確認と明記\n7. 出来高/売買代金/直近値動きが確認できれば、資金流入が初動・拡散中・過熱のどこか判定\n8. 最終判定を 🚀買い候補 / 🔥監視強化 / ⚪待ち / 💰利確警戒 / 🚨危険 の5段階から1つ\n9. 「今すぐ見るべき次の条件」を1〜3個\n\n重要: 投稿者の断定を事実扱いしない。銘柄特定に自信がなければ無理に1社へ決めない。株価やニュースには取得時刻/確認時刻を付ける。\n${hint?`補足: ${hint}\n`:''}${known?`相棒STOCK登録銘柄（参考のみ）: ${known}\n`:''}`;
+}
+selectSnsImageBtn.onclick=()=>snsImageInput.click();
+snsImageInput.onchange=()=>{
+  const file=snsImageInput.files?.[0];
+  if(!file)return resetSnsPreview();
+  if(!file.type.startsWith('image/')){alert('画像ファイルを選んでください');return resetSnsPreview();}
+  if(file.size>15*1024*1024){alert('画像が大きすぎます。15MB以下のスクショを選んでください。');return resetSnsPreview();}
+  if(snsImageUrl)URL.revokeObjectURL(snsImageUrl);
+  snsImageFile=file;snsImageUrl=URL.createObjectURL(file);
+  snsImagePreview.className='sns-image-preview';
+  snsImagePreview.innerHTML=`<img src="${snsImageUrl}" alt="選択したSNSスクリーンショット"><button type="button" id="clearSnsImageBtn" class="sns-clear-btn">×</button><div class="sns-image-meta">${Math.max(1,Math.round(file.size/1024))}KB</div>`;
+  document.querySelector('#clearSnsImageBtn').onclick=resetSnsPreview;
+  shareSnsImageBtn.disabled=false;
+  const supported=!!navigator.share && (!navigator.canShare || navigator.canShare({files:[file]}));
+  snsShareStatus.innerHTML=supported?'✅ 共有準備OK。<b>ChatGPT</b>を共有先に選べば、画像ごと判定できます。':'⚠️ このブラウザでは画像共有に非対応の可能性があります。';
+};
+shareSnsImageBtn.onclick=async()=>{
+  if(!snsImageFile)return;
+  const promptText=buildSnsImagePrompt();
+  try{
+    if(navigator.share && (!navigator.canShare || navigator.canShare({files:[snsImageFile]}))){
+      await navigator.share({title:'相棒STOCK SNS銘柄判定',text:promptText,files:[snsImageFile]});
+      snsShareStatus.innerHTML='✅ 共有しました。共有先AIで画像を確認して判定します。';
+      return;
+    }
+    await navigator.clipboard.writeText(promptText);
+    snsShareStatus.innerHTML='⚠️ 画像共有に非対応でした。判定指示文だけコピーしました。スクショをAIへ添付してください。';
+  }catch(err){
+    if(err?.name!=='AbortError')snsShareStatus.textContent='共有できませんでした。Chrome/PWAからもう一度試してください。';
+  }
+};
 
 document.querySelector('#analyzeSnsBtn').onclick=()=>{const text=document.querySelector('#snsText').value.trim();if(!text){document.querySelector('#snsResult').innerHTML='';return}const kws=['共同','提携','量産','受注','承認','上方修正','黒字','AI','半導体','防衛','特許','TOB','増配','自社株買い'];const risk=['必ず','10倍','絶対','爆上げ','急騰確実','今すぐ','買わないと','億れる'];const material=kws.filter(k=>text.includes(k));const hype=risk.filter(k=>text.includes(k));const score=Math.max(20,Math.min(92,52+material.length*9-hype.length*13));const verdict=score>=75?'一次情報の裏取り優先':score>=55?'候補として監視':'煽り・根拠不足に注意';document.querySelector('#snsResult').innerHTML=`<article class="card analysis-card"><h3>🔎 簡易判定：${score}/100</h3><div class="signal ${score>=75?'buy':score<55?'escape':'hold'}">${verdict}</div><p class="bullet">材料語 ${material.length}件 / 煽り表現 ${hype.length}件。<br>これは文章だけの一次スクリーニングです。実際の売買判断ではIR・開示・株価・出来高で裏取りが必要です。</p></article>`;};
 

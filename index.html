@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#101417" />
   <title>相棒 STOCK</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=0.59.0" />
+  <link rel="stylesheet" href="styles.css?v=0.60.0" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.59</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.60</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -84,24 +84,40 @@
 
     <section id="sns" class="panel">
       <div class="section-head">
-        <div><h2>SNS銘柄判定</h2><p>投稿文を貼ると、煽り表現と材料語を簡易判定。</p></div>
+        <div><h2>SNS銘柄判定</h2><p>スクショをそのままAIへ渡して、銘柄候補と煽り度を調査。</p></div>
       </div>
-      <div class="card input-card">
-        <label for="snsText">SNS投稿を貼り付け</label>
-        <textarea id="snsText" rows="7" placeholder="例：大手○○と共同開発、来期量産予定…"></textarea>
-        <button id="analyzeSnsBtn" class="primary">判定する</button>
+
+      <div class="card sns-shot-card">
+        <div class="sns-shot-head">
+          <div><strong>📸 SNSスクショ判定</strong><span>画像はこの端末から選択。相棒STOCK内やGitHubには保存しません。</span></div>
+          <span class="tag ok">無料</span>
+        </div>
+        <input id="snsImageInput" type="file" accept="image/*" hidden />
+        <button id="selectSnsImageBtn" class="sns-pick-btn">＋ スクショを選ぶ</button>
+        <div id="snsImagePreview" class="sns-image-preview empty"><span>まだ画像が選ばれていません</span></div>
+        <label class="sns-hint-label" for="snsHint">補足（任意）</label>
+        <input id="snsHint" placeholder="例：Xで今朝見た投稿 / 低位株っぽい" />
+        <button id="shareSnsImageBtn" class="primary sns-share-btn" disabled>🤖 スクショをAIへ共有</button>
+        <div id="snsShareStatus" class="sns-share-status">スクショを選ぶと、Androidの共有画面からChatGPT等へ画像＋判定指示を送れます。</div>
+      </div>
+
+      <div class="card input-card sns-text-card">
+        <label for="snsText">文字だけならここへ貼り付け</label>
+        <textarea id="snsText" rows="6" placeholder="例：大手○○と共同開発、来期量産予定…"></textarea>
+        <button id="analyzeSnsBtn" class="primary">文章を簡易判定</button>
       </div>
       <div id="snsResult"></div>
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.59 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.60 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
         <div class="setting-row"><span>起動時調査</span><span class="tag ok">自動開始</span></div>
         <div class="setting-row"><span>株価データ受け皿</span><span class="tag ok">準備済</span></div>
         <div class="setting-row"><span>リアルタイム株価取得</span><span class="tag warn">接続先選定中</span></div>
+        <div class="setting-row"><span>SNSスクショ判定</span><span class="tag ok">Android共有対応</span></div>
         <div class="setting-row"><span>外部ニュース/IR自動取得</span><span class="tag warn">未接続</span></div>
         <div class="setting-row"><span>本物のAI API分析</span><span class="tag warn">未接続</span></div>
         <div class="setting-row"><span>moomoo自動同期</span><span class="tag warn">利益確認後</span></div>
@@ -168,6 +184,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.59.0"></script>
+  <script src="app.js?v=0.60.0"></script>
 </body>
 </html>
