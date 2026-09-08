@@ -6,18 +6,34 @@
   <meta name="theme-color" content="#101417" />
   <title>相棒 STOCK</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css" />
+  <link rel="stylesheet" href="styles.css?v=0.2.0" />
 </head>
 <body>
   <header class="topbar">
     <div>
-      <div class="eyebrow">お小遣い運用モード</div>
-      <h1>相棒 STOCK</h1>
+      <div class="eyebrow">無料運用モード</div>
+      <h1>相棒 STOCK <span class="version">v0.2</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
 
   <main>
+    <section class="research card" aria-live="polite">
+      <div class="row research-top">
+        <div>
+          <div class="muted">起動時AI調査</div>
+          <div id="researchStatus" class="research-status">準備中…</div>
+        </div>
+        <span id="researchBadge" class="tag wait">待機</span>
+      </div>
+      <div class="progress"><span id="researchProgress"></span></div>
+      <div id="researchDetail" class="research-detail">登録銘柄を確認しています</div>
+      <div class="research-actions">
+        <button id="rerunResearchBtn" class="small-btn">↻ 再調査</button>
+        <button id="shareResearchBtn" class="ghost-btn">AI調査文を共有</button>
+      </div>
+    </section>
+
     <section class="hero card">
       <div>
         <div class="muted">運用資産</div>
@@ -26,24 +42,24 @@
       </div>
       <div class="hero-badge">
         <span>AI総合</span>
-        <strong id="overallSignal">様子見</strong>
+        <strong id="overallSignal">未判定</strong>
       </div>
     </section>
 
     <section class="grid-2">
       <button class="quick card" data-tab="radar">
         <span class="quick-icon">🚀</span>
-        <span><strong>化け株レーダー</strong><small>初動・資金流入を探す</small></span>
+        <span><strong>化け株レーダー</strong><small>初動候補を記録</small></span>
       </button>
       <button class="quick card" data-tab="sns">
         <span class="quick-icon">🔎</span>
-        <span><strong>SNS銘柄判定</strong><small>伏せ銘柄も候補推定</small></span>
+        <span><strong>SNS銘柄判定</strong><small>投稿文を簡易チェック</small></span>
       </button>
     </section>
 
     <section id="portfolio" class="panel active">
       <div class="section-head">
-        <div><h2>保有株</h2><p>買い・温める・利確・逃げるを一目で</p></div>
+        <div><h2>保有株</h2><p>当面は手入力。起動時に調査対象へ自動登録。</p></div>
         <button id="addHoldingBtn" class="small-btn">＋追加</button>
       </div>
       <div id="holdingsList" class="stack"></div>
@@ -51,33 +67,36 @@
 
     <section id="radar" class="panel">
       <div class="section-head">
-        <div><h2>化け株レーダー</h2><p>安い株ではなく「理由が出始めた株」を監視</p></div>
+        <div><h2>化け株レーダー</h2><p>気になる銘柄を監視リストとして手動登録。</p></div>
+        <button id="addWatchBtn" class="small-btn">＋追加</button>
       </div>
       <div id="radarList" class="stack"></div>
     </section>
 
     <section id="sns" class="panel">
       <div class="section-head">
-        <div><h2>SNS銘柄判定</h2><p>投稿文を貼るだけ。試作ではルールベース判定。</p></div>
+        <div><h2>SNS銘柄判定</h2><p>投稿文を貼ると、煽り表現と材料語を簡易判定。</p></div>
       </div>
       <div class="card input-card">
         <label for="snsText">SNS投稿を貼り付け</label>
-        <textarea id="snsText" rows="7" placeholder="例：いま注目の低位株。大手○○と共同開発、来期量産予定…"></textarea>
-        <button id="analyzeSnsBtn" class="primary">AI判定する</button>
+        <textarea id="snsText" rows="7" placeholder="例：大手○○と共同開発、来期量産予定…"></textarea>
+        <button id="analyzeSnsBtn" class="primary">判定する</button>
       </div>
       <div id="snsResult"></div>
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>試作1号の連携状況</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.2 無料運用モード</p></div></div>
       <div class="card settings-card">
-        <div class="setting-row"><span>moomoo自動同期</span><span class="tag warn">次段階</span></div>
-        <div class="setting-row"><span>PayPay保有株取込</span><span class="tag warn">次段階</span></div>
-        <div class="setting-row"><span>リアルタイムAI分析</span><span class="tag warn">次段階</span></div>
-        <div class="setting-row"><span>専用音プッシュ通知</span><span class="tag ok">通知テスト可</span></div>
+        <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動</span></div>
+        <div class="setting-row"><span>起動時調査</span><span class="tag ok">自動開始</span></div>
+        <div class="setting-row"><span>外部ニュース/IR自動取得</span><span class="tag warn">未接続</span></div>
+        <div class="setting-row"><span>本物のAI API分析</span><span class="tag warn">未接続</span></div>
+        <div class="setting-row"><span>moomoo自動同期</span><span class="tag warn">利益確認後</span></div>
         <div class="setting-row"><span>ローカル保存</span><span class="tag ok">有効</span></div>
       </div>
-      <button id="resetBtn" class="danger">試作データを初期化</button>
+      <p class="notice">※ GitHub Pagesだけでは、秘密鍵を安全に保持できないためAI APIや証券APIはまだ直接接続していません。v0.2は「起動→調査対象整理→判断記録」の土台です。</p>
+      <button id="resetBtn" class="danger">全データを初期化</button>
     </section>
   </main>
 
@@ -90,17 +109,32 @@
 
   <dialog id="holdingDialog">
     <form method="dialog" id="holdingForm">
-      <h3>保有株を追加</h3>
-      <label>証券会社<select id="broker"><option>PayPay証券</option><option>moomoo証券</option></select></label>
-      <label>銘柄名<input id="name" required placeholder="例：ABCテクノ" /></label>
-      <label>コード<input id="ticker" required placeholder="例：1234" /></label>
+      <h3 id="holdingDialogTitle">保有株を追加</h3>
+      <input id="holdingEditIndex" type="hidden" value="" />
+      <label>証券会社<select id="broker"><option>PayPay証券</option><option>moomoo証券</option><option>その他</option></select></label>
+      <label>市場<select id="market"><option value="JP">日本株</option><option value="US">米国株</option></select></label>
+      <label>銘柄名<input id="name" required placeholder="例：○○株式会社" /></label>
+      <label>コード<input id="ticker" required inputmode="text" placeholder="例：7203 / AAPL" /></label>
       <label>保有数<input id="qty" type="number" step="0.0001" min="0" required /></label>
       <label>平均取得単価<input id="avg" type="number" step="0.01" min="0" required /></label>
       <label>現在値<input id="price" type="number" step="0.01" min="0" required /></label>
+      <label>メモ<input id="holdingNote" placeholder="例：決算前は注意" /></label>
       <div class="dialog-actions"><button value="cancel">キャンセル</button><button id="saveHolding" value="default" class="primary">保存</button></div>
     </form>
   </dialog>
 
-  <script src="app.js"></script>
+  <dialog id="watchDialog">
+    <form method="dialog" id="watchForm">
+      <h3>監視銘柄を追加</h3>
+      <label>市場<select id="watchMarket"><option value="JP">日本株</option><option value="US">米国株</option></select></label>
+      <label>銘柄名<input id="watchName" required placeholder="例：○○テクノ" /></label>
+      <label>コード<input id="watchTicker" required placeholder="例：1234 / ABCD" /></label>
+      <label>現在値（任意）<input id="watchPrice" type="number" step="0.01" min="0" /></label>
+      <label>気になる理由<input id="watchReason" placeholder="例：出来高増加、IR待ち" /></label>
+      <div class="dialog-actions"><button value="cancel">キャンセル</button><button value="default" class="primary">保存</button></div>
+    </form>
+  </dialog>
+
+  <script src="app.js?v=0.2.0"></script>
 </body>
 </html>
