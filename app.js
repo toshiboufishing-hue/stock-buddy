@@ -219,15 +219,37 @@ function signalReason(h){
   return'損益だけでは強い判断材料なし。最新情報待ち';
 }
 function render(){renderHoldings();renderRadar();renderTotals();renderPortfolioHistory();}
+function holdingPriority(h){
+  // 将来の外部AI結果が入ったら最優先で使用。現状はローカル損益判定を安全な暫定値として使う。
+  if(h.aiImportant===true)return 1000+(Number(h.aiPriority)||0);
+  const sig=deriveSignal(h);
+  return ({escape:900,take:700,buy:600,hold:400,wait:100})[sig]||0;
+}
+function directionInfo(h,signal){
+  // aiDirection: up/down/volatile/flat を外部AI連携時に保存できる設計。
+  const d=h.aiDirection;
+  if(d==='up')return['⬆️','上昇方向','up'];
+  if(d==='down')return['⬇️','下落方向','down'];
+  if(d==='volatile')return['↕️','乱高下警戒','volatile'];
+  if(d==='flat')return['➡️','方向不明','flat'];
+  // 無料ローカル版では未来予測を捏造しない。現在の損益状態を矢印で直感表示する。
+  if(signal==='escape')return['⬇️','下落警戒','down'];
+  if(signal==='take'||signal==='hold')return['⬆️','上昇中','up'];
+  return['➡️','方向不明','flat'];
+}
 function renderHoldings(){
   const list=document.querySelector('#holdingsList');list.innerHTML='';
   if(!data.holdings.length){list.innerHTML='<article class="card empty-card"><strong>まだ保有株がありません</strong>「＋追加」から実際の保有銘柄を登録すると、次回起動時から自動で調査対象になります。</article>';return;}
-  data.holdings.forEach((h,i)=>{
+  const ordered=data.holdings.map((h,i)=>({h,i,priority:holdingPriority(h)})).sort((a,b)=>b.priority-a.priority||a.i-b.i);
+  ordered.forEach(({h,i,priority})=>{
     const signal=deriveSignal(h),s=signalMap[signal];
     const value=holdingValue(h),cost=holdingCost(h),pnl=cost!=null?value-cost:null,pct=cost?pnl/cost*100:null;
-    const el=document.createElement('article');el.className='card holding';el.dataset.index=i;
+    const important=h.aiImportant===true||signal==='escape';
+    const dir=directionInfo(h,signal);
+    const el=document.createElement('article');el.className=`card holding compact-holding ${important?'important-holding':''}`;el.dataset.index=i;
     const pinfo=productInfo(h);
-    el.innerHTML=`<div class="row"><div><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}</div><div class="product-tags">${h.accountCourse==='challenge'?'<span class="product-tag special">PayPayチャレンジ</span>':''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div></div><div><div class="price">${money(value,h.market)}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${money(pnl,h.market)} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="signal ${s[2]}">${s[0]} ${s[1]}</div><p class="bullet">${signalReason(h)}<br><span class="risk-note">商品特性：${esc(pinfo.risk)}</span>${h.note?`<br>メモ：${esc(h.note)}`:''}</p><div class="meta-grid"><div class="meta"><b>${h.qty}</b><span>保有数</span></div><div class="meta"><b>${money(value,h.market)}</b><span>評価額</span></div><div class="meta"><b>${h.qty>0?money(value/h.qty,h.market):'—'}</b><span>評価単価</span></div></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈 推移</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div>`;
+    const reason=signalReason(h);
+    el.innerHTML=`${important?'<div class="priority-banner">🚨 最重要・強制トップ</div>':''}<div class="compact-top"><div class="holding-main"><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}</div></div><div class="holding-money"><div class="price">${money(value,h.market)}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${money(pnl,h.market)} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="compact-status"><span class="direction ${dir[2]}"><b>${dir[0]}</b> ${dir[1]}</span><span class="signal ${s[2]}">${s[0]} ${s[1]}</span></div><div class="ai-comment ${important?'critical':''}"><span class="ai-label">AIコメント</span><strong>${esc(reason)}</strong></div><div class="compact-foot"><div class="product-tags">${h.accountCourse==='challenge'?'<span class="product-tag special">PayPayチャレンジ</span>':''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div></div>`;
     list.appendChild(el);
   });
   document.querySelectorAll('.history-holding').forEach(b=>b.onclick=e=>{e.stopPropagation();openHoldingHistory(+b.dataset.index)});
