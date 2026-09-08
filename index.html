@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.55</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.56</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -86,7 +86,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.55 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.56 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -116,7 +116,8 @@
       <label>市場<select id="market"><option value="JP">日本株</option><option value="US">米国株</option></select></label>
       <label>コード<input id="ticker" required inputmode="text" placeholder="例：7203 / AAPL" /></label>
       <label>銘柄名<input id="name" required placeholder="日本株はコード入力で自動表示" /></label>
-      <label>商品タイプ<select id="productType"><option value="auto">自動判定</option><option value="stock">個別株</option><option value="etf">ETF</option><option value="leveraged">レバレッジETF</option><option value="inverse">インバースETF</option><option value="challenge">PayPayチャレンジコース</option><option value="other">その他</option></select></label>
+      <label>口座 / コース<select id="accountCourse"><option value="normal">通常</option><option value="nisa">NISA</option><option value="challenge">PayPayチャレンジコース</option><option value="other">その他</option></select></label>
+      <label>商品タイプ<select id="productType"><option value="auto">自動判定</option><option value="stock">個別株</option><option value="etf">ETF</option><option value="leveraged">レバレッジETF（順方向）</option><option value="inverse">インバースETF（逆方向）</option><option value="other">その他</option></select></label>
       <div id="productHint" class="product-hint">銘柄名から商品特性を自動判定します。</div>
       <label>保有数<input id="qty" type="number" step="0.0001" min="0" required /></label>
       <label>評価額<input id="holdingValue" type="number" step="0.01" min="0" required placeholder="例：124725" /></label>
@@ -147,6 +148,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.55.0"></script>
+  <script src="app.js?v=0.56.0"></script>
 </body>
 </html>
