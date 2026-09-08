@@ -1,0 +1,9 @@
+{
+  "name":"相棒 STOCK",
+  "short_name":"相棒STOCK",
+  "start_url":"./index.html",
+  "display":"standalone",
+  "background_color":"#0b0f12",
+  "theme_color":"#101417",
+  "lang":"ja-JP"
+}
