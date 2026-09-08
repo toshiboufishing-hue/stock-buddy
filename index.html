@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.4</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.5</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -86,7 +86,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.4 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.5 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -117,8 +117,7 @@
       <label>銘柄名<input id="name" required placeholder="例：○○株式会社" /></label>
       <label>コード<input id="ticker" required inputmode="text" placeholder="例：7203 / AAPL" /></label>
       <label>保有数<input id="qty" type="number" step="0.0001" min="0" required /></label>
-      <label>平均取得単価<input id="avg" type="number" step="0.01" min="0" required /></label>
-      <label>現在値<input id="price" type="number" step="0.01" min="0" required /></label>
+      <label>評価額<input id="holdingValue" type="number" step="0.01" min="0" required placeholder="例：124725" /></label>
       <label>メモ<input id="holdingNote" placeholder="例：決算前は注意" /></label>
       <div class="dialog-actions"><button value="cancel">キャンセル</button><button id="saveHolding" value="default" class="primary">保存</button></div>
     </form>
@@ -127,7 +126,7 @@
   <dialog id="paypayQuickDialog" class="import-dialog">
     <form method="dialog" id="paypayQuickForm">
       <h3>⚡ PayPay簡単更新</h3>
-      <p class="dialog-note">PayPay証券の画面を見ながら「評価額」と「評価損益」だけ入力。保有数はそのまま使い、平均取得単価と現在値を自動計算します。</p>
+      <p class="dialog-note">PayPay証券の画面を見ながら「評価額」と「評価損益」だけ入力。保有数はそのまま使い、損益情報を更新します。</p>
       <div id="paypayQuickRows" class="import-candidates"></div>
       <div class="dialog-actions sticky-actions"><button value="cancel">キャンセル</button><button id="applyPaypayQuickBtn" type="button" class="primary">この内容で更新</button></div>
     </form>

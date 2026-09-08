@@ -1,4 +1,4 @@
-const APP_VERSION='0.4.0';
+const APP_VERSION='0.5.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -22,17 +22,21 @@ const signalMap={buy:['🚀','買い候補','buy'],hold:['🔥','保有継続','
 
 function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
 function esc(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
+function holdingValue(h){return Number.isFinite(+h.value)?+h.value:(+h.qty||0)*(+h.price||0);}
+function holdingCost(h){return Number.isFinite(+h.costBasis)?+h.costBasis:((+h.qty||0)*(+h.avg||0)||null);}
 function deriveSignal(h){
-  if(!h.avg||!h.price)return'wait';
-  const pnl=(h.price-h.avg)/h.avg*100;
+  const value=holdingValue(h),cost=holdingCost(h);
+  if(!cost)return'wait';
+  const pnl=(value-cost)/cost*100;
   if(pnl<=-15)return'escape';
   if(pnl>=25)return'take';
   if(pnl>=8)return'hold';
   return'wait';
 }
 function signalReason(h){
-  if(!h.avg||!h.price)return'価格情報不足';
-  const pct=(h.price-h.avg)/h.avg*100;
+  const value=holdingValue(h),cost=holdingCost(h);
+  if(!cost)return'取得総額未登録。最新情報を優先して確認';
+  const pct=(value-cost)/cost*100;
   if(pct<=-15)return'取得単価から15%以上下落。材料確認を優先';
   if(pct>=25)return'取得単価から25%以上上昇。利確条件を再確認';
   if(pct>=8)return'含み益圏。材料が崩れていないか確認';
@@ -44,9 +48,9 @@ function renderHoldings(){
   if(!data.holdings.length){list.innerHTML='<article class="card empty-card"><strong>まだ保有株がありません</strong>「＋追加」から実際の保有銘柄を登録すると、次回起動時から自動で調査対象になります。</article>';return;}
   data.holdings.forEach((h,i)=>{
     const signal=deriveSignal(h),s=signalMap[signal];
-    const value=h.qty*h.price,cost=h.qty*h.avg,pnl=value-cost,pct=cost?pnl/cost*100:0;
+    const value=holdingValue(h),cost=holdingCost(h),pnl=cost!=null?value-cost:null,pct=cost?pnl/cost*100:null;
     const el=document.createElement('article');el.className='card holding';
-    el.innerHTML=`<div class="row"><div><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}</div></div><div><div class="price">${money(h.price,h.market)}</div><div class="sub ${pnl>=0?'positive':'negative'}">${pnl>=0?'+':''}${money(pnl,h.market)} (${pct>=0?'+':''}${pct.toFixed(1)}%)</div></div></div><div class="signal ${s[2]}">${s[0]} ${s[1]}</div><p class="bullet">${signalReason(h)}${h.note?`<br>メモ：${esc(h.note)}`:''}</p><div class="meta-grid"><div class="meta"><b>${h.qty}</b><span>保有数</span></div><div class="meta"><b>${money(h.avg,h.market)}</b><span>平均取得</span></div><div class="meta"><b>${money(value,h.market)}</b><span>評価額</span></div></div><div class="card-actions"><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div>`;
+    el.innerHTML=`<div class="row"><div><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}</div></div><div><div class="price">${money(value,h.market)}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${money(pnl,h.market)} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="signal ${s[2]}">${s[0]} ${s[1]}</div><p class="bullet">${signalReason(h)}${h.note?`<br>メモ：${esc(h.note)}`:''}</p><div class="meta-grid"><div class="meta"><b>${h.qty}</b><span>保有数</span></div><div class="meta"><b>${money(value,h.market)}</b><span>評価額</span></div><div class="meta"><b>${h.qty>0?money(value/h.qty,h.market):'—'}</b><span>評価単価</span></div></div><div class="card-actions"><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div>`;
     list.appendChild(el);
   });
   document.querySelectorAll('.edit-holding').forEach(b=>b.onclick=()=>openHoldingEdit(+b.dataset.index));
@@ -60,13 +64,13 @@ function renderRadar(){
 }
 function renderTotals(){
   let jpValue=0,jpCost=0,usValue=0,usCost=0;
-  data.holdings.forEach(h=>{const value=h.qty*h.price,cost=h.qty*h.avg;if(h.market==='US'){usValue+=value;usCost+=cost}else{jpValue+=value;jpCost+=cost}});
+  let jpCostKnown=true,usCostKnown=true; data.holdings.forEach(h=>{const value=holdingValue(h),cost=holdingCost(h);if(h.market==='US'){usValue+=value;if(cost==null)usCostKnown=false;else usCost+=cost}else{jpValue+=value;if(cost==null)jpCostKnown=false;else jpCost+=cost}});
   const total=document.querySelector('#totalValue');
   total.textContent=usValue?`${yen(jpValue)} + $${usValue.toLocaleString('en-US',{maximumFractionDigits:2})}`:yen(jpValue);
-  const pnlJP=jpValue-jpCost,pctJP=jpCost?pnlJP/jpCost*100:0;
+  const pnlJP=jpCostKnown?jpValue-jpCost:null,pctJP=(jpCostKnown&&jpCost)?pnlJP/jpCost*100:null;
   const t=document.querySelector('#totalPnl');
-  t.textContent=usValue?`日本株 ${pnlJP>=0?'+':''}${yen(pnlJP)} / 米国株 ${usValue-usCost>=0?'+':''}$${(usValue-usCost).toFixed(2)}`:`${pnlJP>=0?'+':''}${yen(pnlJP)}（${pctJP>=0?'+':''}${pctJP.toFixed(1)}%）`;
-  t.className='pnl '+(pnlJP>=0?'positive':'negative');
+  t.textContent=usValue?`日本株 ${pnlJP==null?'損益未登録':`${pnlJP>=0?'+':''}${yen(pnlJP)}`} / 米国株 ${usCostKnown?`${usValue-usCost>=0?'+':''}$${(usValue-usCost).toFixed(2)}`:'損益未登録'}`:(pnlJP==null?'損益未登録':`${pnlJP>=0?'+':''}${yen(pnlJP)}（${pctJP>=0?'+':''}${pctJP.toFixed(1)}%）`);
+  t.className='pnl '+(pnlJP==null?'':(pnlJP>=0?'positive':'negative'));
   const sigs=data.holdings.map(deriveSignal);
   document.querySelector('#overallSignal').textContent=!sigs.length?'未判定':sigs.includes('escape')?'要確認':sigs.includes('take')?'利確確認':sigs.includes('hold')?'保有確認':'様子見';
 }
@@ -76,15 +80,15 @@ document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()
 
 const holdingDialog=document.querySelector('#holdingDialog');
 document.querySelector('#addHoldingBtn').onclick=()=>{document.querySelector('#holdingForm').reset();document.querySelector('#holdingEditIndex').value='';document.querySelector('#holdingDialogTitle').textContent='保有株を追加';holdingDialog.showModal();};
-function openHoldingEdit(i){const h=data.holdings[i];document.querySelector('#holdingEditIndex').value=i;document.querySelector('#holdingDialogTitle').textContent='保有株を編集';document.querySelector('#broker').value=h.broker;document.querySelector('#market').value=h.market||'JP';document.querySelector('#name').value=h.name;document.querySelector('#ticker').value=h.ticker;document.querySelector('#qty').value=h.qty;document.querySelector('#avg').value=h.avg;document.querySelector('#price').value=h.price;document.querySelector('#holdingNote').value=h.note||'';holdingDialog.showModal();}
+function openHoldingEdit(i){const h=data.holdings[i];document.querySelector('#holdingEditIndex').value=i;document.querySelector('#holdingDialogTitle').textContent='保有株を編集';document.querySelector('#broker').value=h.broker;document.querySelector('#market').value=h.market||'JP';document.querySelector('#name').value=h.name;document.querySelector('#ticker').value=h.ticker;document.querySelector('#qty').value=h.qty;document.querySelector('#holdingValue').value=holdingValue(h);document.querySelector('#holdingNote').value=h.note||'';holdingDialog.showModal();}
 function deleteHolding(i){if(confirm(`${data.holdings[i].name} を削除しますか？`)){data.holdings.splice(i,1);save();render();runStartupResearch();}}
-document.querySelector('#holdingForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();const h={broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),qty:+document.querySelector('#qty').value,avg:+document.querySelector('#avg').value,price:+document.querySelector('#price').value,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString()};const idx=document.querySelector('#holdingEditIndex').value;if(idx==='')data.holdings.push(h);else data.holdings[+idx]=h;save();render();holdingDialog.close();runStartupResearch();});
+document.querySelector('#holdingForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();const idx=document.querySelector('#holdingEditIndex').value;const prev=idx===''?{}:data.holdings[+idx];const h={...prev,broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),qty:+document.querySelector('#qty').value,value:+document.querySelector('#holdingValue').value,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString()};delete h.avg;delete h.price;if(idx==='')data.holdings.push(h);else data.holdings[+idx]=h;save();render();holdingDialog.close();runStartupResearch();});
 
 const watchDialog=document.querySelector('#watchDialog');document.querySelector('#addWatchBtn').onclick=()=>{document.querySelector('#watchForm').reset();watchDialog.showModal();};
 document.querySelector('#watchForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();data.radar.push({market:document.querySelector('#watchMarket').value,name:document.querySelector('#watchName').value.trim(),ticker:document.querySelector('#watchTicker').value.trim().toUpperCase(),price:+document.querySelector('#watchPrice').value||0,reason:document.querySelector('#watchReason').value.trim(),addedAt:new Date().toISOString()});save();render();watchDialog.close();runStartupResearch();});
 
 function buildResearchPrompt(){
-  const holdings=data.holdings.map(h=>`- [保有] ${h.market} ${h.ticker} ${h.name} / ${h.broker} / 数量 ${h.qty} / 取得 ${h.avg} / 現在 ${h.price}${h.note?` / メモ: ${h.note}`:''}`).join('\n');
+  const holdings=data.holdings.map(h=>`- [保有] ${h.market} ${h.ticker} ${h.name} / ${h.broker} / 数量 ${h.qty} / 評価額 ${holdingValue(h)}${h.note?` / メモ: ${h.note}`:''}`).join('\n');
   const watch=data.radar.map(r=>`- [監視] ${r.market} ${r.ticker} ${r.name}${r.price?` / 現在 ${r.price}`:''}${r.reason?` / 理由: ${r.reason}`:''}`).join('\n');
   return `相棒STOCK 起動時調査。以下の銘柄について、現在時点の最新情報をWebで調査してください。株価・出来高/売買代金・適時開示/IR・決算・ニュース・地政学/政策・SNSの注目変化を確認し、情報の鮮度と資金流入を重視してください。煽り投稿は必ず一次情報で裏取りしてください。各銘柄を 🚀買い候補 / 🔥保有継続 / ⚪待ち / 💰利確検討 / 🚨売却警戒 の5段階で、根拠・否定材料・次に見る条件とともに簡潔に判定してください。\n\n${holdings||'- 保有株なし'}\n${watch||'- 監視株なし'}`;
 }
@@ -136,10 +140,10 @@ function openPaypayQuick(){
     applyPaypayQuickBtn.disabled=true;paypayQuickDialog.showModal();return;
   }
   rows.forEach(({h,index},i)=>{
-    const currentValue=h.qty*h.price,currentPnl=currentValue-h.qty*h.avg;
+    const currentValue=holdingValue(h),currentCost=holdingCost(h),currentPnl=currentCost==null?null:currentValue-currentCost;
     paypayQuickData.push({index,value:null,pnl:null});
     const el=document.createElement('div');el.className='candidate';
-    el.innerHTML=`<div class="candidate-head"><strong>${esc(h.name)}</strong><span class="candidate-status update">${esc(h.ticker)}</span></div><div class="candidate-grid"><label>評価額<input data-i="${i}" data-f="value" inputmode="decimal" placeholder="例：124725"></label><label>評価損益<input data-i="${i}" data-f="pnl" inputmode="decimal" placeholder="例：-14860"></label></div><div class="candidate-help">現在の登録：評価額 ${money(currentValue,h.market)} / 損益 ${currentPnl>=0?'+':''}${money(currentPnl,h.market)}<br>※ 空欄の銘柄は更新しません。</div>`;
+    el.innerHTML=`<div class="candidate-head"><strong>${esc(h.name)}</strong><span class="candidate-status update">${esc(h.ticker)}</span></div><div class="candidate-grid"><label>評価額<input data-i="${i}" data-f="value" inputmode="decimal" placeholder="例：124725"></label><label>評価損益<input data-i="${i}" data-f="pnl" inputmode="decimal" placeholder="例：-14860"></label></div><div class="candidate-help">現在の登録：評価額 ${money(currentValue,h.market)} / 損益 ${currentPnl==null?'未登録':`${currentPnl>=0?'+':''}${money(currentPnl,h.market)}`}<br>※ 空欄の銘柄は更新しません。</div>`;
     paypayQuickRows.appendChild(el);
   });
   paypayQuickRows.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',()=>{paypayQuickData[+inp.dataset.i][inp.dataset.f]=parseQuickNumber(inp.value);}));
@@ -155,8 +159,9 @@ applyPaypayQuickBtn.onclick=()=>{
     if(!h || !(h.qty>0) || r.value<0){skipped++;return;}
     const cost=r.value-r.pnl;
     if(cost<0){skipped++;return;}
-    h.price=r.value/h.qty;
-    h.avg=cost/h.qty;
+    h.value=r.value;
+    h.costBasis=cost;
+    delete h.price; delete h.avg;
     h.updatedAt=new Date().toISOString();
     h.note=h.note||'PayPay簡単更新';
     updated++;
