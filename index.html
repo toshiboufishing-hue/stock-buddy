@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#101417" />
   <title>相棒 STOCK</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=0.3.0" />
+  <link rel="stylesheet" href="styles.css?v=0.4.0" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.3</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.4</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -60,7 +60,7 @@
     <section id="portfolio" class="panel active">
       <div class="section-head">
         <div><h2>保有株</h2><p>当面は手入力。起動時に調査対象へ自動登録。</p></div>
-        <div class="section-actions"><button id="paypayImportBtn" class="small-btn camera-btn">📷 一覧スクショ</button><button id="addHoldingBtn" class="small-btn">＋追加</button></div>
+        <div class="section-actions"><button id="paypayQuickBtn" class="small-btn camera-btn">⚡ PayPay簡単更新</button><button id="addHoldingBtn" class="small-btn">＋追加</button></div>
       </div>
       <div id="holdingsList" class="stack"></div>
     </section>
@@ -86,9 +86,9 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.3 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.4 無料運用モード</p></div></div>
       <div class="card settings-card">
-        <div class="setting-row"><span>PayPay保有一覧</span><span class="tag ok">スクショ読込</span></div>
+        <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
         <div class="setting-row"><span>起動時調査</span><span class="tag ok">自動開始</span></div>
         <div class="setting-row"><span>外部ニュース/IR自動取得</span><span class="tag warn">未接続</span></div>
@@ -96,7 +96,7 @@
         <div class="setting-row"><span>moomoo自動同期</span><span class="tag warn">利益確認後</span></div>
         <div class="setting-row"><span>ローカル保存</span><span class="tag ok">有効</span></div>
       </div>
-      <p class="notice">※ PayPayスクショ解析は画像を端末内のブラウザでOCR処理します。画像そのものを相棒STOCKのサーバーへ保存・送信しません。GitHub Pagesだけでは秘密鍵を安全に保持できないため、AI APIや証券APIはまだ直接接続していません。</p>
+      <p class="notice">※ PayPay証券は、初回だけ通常登録。その後は「評価額」と「評価損益」だけで保有情報を更新できます。GitHub Pagesだけでは秘密鍵を安全に保持できないため、AI APIや証券APIはまだ直接接続していません。</p>
       <button id="resetBtn" class="danger">全データを初期化</button>
     </section>
   </main>
@@ -124,24 +124,12 @@
     </form>
   </dialog>
 
-  <dialog id="paypayImportDialog" class="import-dialog">
-    <form method="dialog" id="paypayImportForm">
-      <h3>📷 PayPay保有一覧を読み込む</h3>
-      <p class="dialog-note">保有一覧のスクショを1枚以上選択。端末内で文字を読み取り、既存銘柄は更新候補、新しい銘柄は追加候補にします。</p>
-      <label class="file-picker">スクショを選択
-        <input id="paypayImages" type="file" accept="image/*" multiple />
-      </label>
-      <div id="paypayPreview" class="image-preview"></div>
-      <div id="ocrStatus" class="ocr-status">画像を選択してください</div>
-      <div class="progress"><span id="ocrProgress"></span></div>
-      <button id="runOcrBtn" type="button" class="primary full-btn" disabled>画像を解析</button>
-      <details class="ocr-raw-wrap">
-        <summary>読み取った文字を確認・修正</summary>
-        <textarea id="ocrRawText" rows="8" placeholder="OCR結果がここに入ります。必要なら修正できます。"></textarea>
-        <button id="reparseOcrBtn" type="button" class="ghost-btn full-btn">修正した文字から再解析</button>
-      </details>
-      <div id="importCandidates" class="import-candidates"></div>
-      <div class="dialog-actions sticky-actions"><button value="cancel">キャンセル</button><button id="applyImportBtn" type="button" class="primary" disabled>この内容で更新</button></div>
+  <dialog id="paypayQuickDialog" class="import-dialog">
+    <form method="dialog" id="paypayQuickForm">
+      <h3>⚡ PayPay簡単更新</h3>
+      <p class="dialog-note">PayPay証券の画面を見ながら「評価額」と「評価損益」だけ入力。保有数はそのまま使い、平均取得単価と現在値を自動計算します。</p>
+      <div id="paypayQuickRows" class="import-candidates"></div>
+      <div class="dialog-actions sticky-actions"><button value="cancel">キャンセル</button><button id="applyPaypayQuickBtn" type="button" class="primary">この内容で更新</button></div>
     </form>
   </dialog>
 
@@ -157,7 +145,6 @@
     </form>
   </dialog>
 
-  <script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
-  <script src="app.js?v=0.3.0"></script>
+  <script src="app.js?v=0.4.0"></script>
 </body>
 </html>

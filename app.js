@@ -1,4 +1,4 @@
-const APP_VERSION='0.3.0';
+const APP_VERSION='0.4.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -118,131 +118,51 @@ document.querySelector('#shareResearchBtn').onclick=shareResearchPrompt;
 document.querySelector('#analyzeSnsBtn').onclick=()=>{const text=document.querySelector('#snsText').value.trim();if(!text){document.querySelector('#snsResult').innerHTML='';return}const kws=['共同','提携','量産','受注','承認','上方修正','黒字','AI','半導体','防衛','特許','TOB','増配','自社株買い'];const risk=['必ず','10倍','絶対','爆上げ','急騰確実','今すぐ','買わないと','億れる'];const material=kws.filter(k=>text.includes(k));const hype=risk.filter(k=>text.includes(k));const score=Math.max(20,Math.min(92,52+material.length*9-hype.length*13));const verdict=score>=75?'一次情報の裏取り優先':score>=55?'候補として監視':'煽り・根拠不足に注意';document.querySelector('#snsResult').innerHTML=`<article class="card analysis-card"><h3>🔎 簡易判定：${score}/100</h3><div class="signal ${score>=75?'buy':score<55?'escape':'hold'}">${verdict}</div><p class="bullet">材料語 ${material.length}件 / 煽り表現 ${hype.length}件。<br>これは文章だけの一次スクリーニングです。実際の売買判断ではIR・開示・株価・出来高で裏取りが必要です。</p></article>`;};
 
 
-// --- PayPay Securities screenshot importer (v0.3) ---
-const paypayImportDialog=document.querySelector('#paypayImportDialog');
-const paypayImages=document.querySelector('#paypayImages');
-const paypayPreview=document.querySelector('#paypayPreview');
-const runOcrBtn=document.querySelector('#runOcrBtn');
-const ocrStatus=document.querySelector('#ocrStatus');
-const ocrProgress=document.querySelector('#ocrProgress');
-const ocrRawText=document.querySelector('#ocrRawText');
-const reparseOcrBtn=document.querySelector('#reparseOcrBtn');
-const importCandidates=document.querySelector('#importCandidates');
-const applyImportBtn=document.querySelector('#applyImportBtn');
-let importRows=[];
-
-function normalizeOcrText(text=''){
-  const fw='０１２３４５６７８９，．％＋－￥';
-  const hw='0123456789,.%+-¥';
-  let out=String(text).normalize('NFKC');
-  for(let i=0;i<fw.length;i++)out=out.split(fw[i]).join(hw[i]);
-  return out.replace(/[−–—]/g,'-').replace(/\r/g,'').replace(/[ \t]+/g,' ').replace(/\n{3,}/g,'\n\n').trim();
+// --- PayPay Securities quick updater (v0.4) ---
+const paypayQuickDialog=document.querySelector('#paypayQuickDialog');
+const paypayQuickRows=document.querySelector('#paypayQuickRows');
+const applyPaypayQuickBtn=document.querySelector('#applyPaypayQuickBtn');
+let paypayQuickData=[];
+function parseQuickNumber(v){
+  const cleaned=String(v??'').replace(/[円¥,$株\s]/g,'').replace(/,/g,'').replace(/[−–—]/g,'-');
+  if(cleaned==='')return null;
+  const n=Number(cleaned);return Number.isFinite(n)?n:null;
 }
-function numFrom(s){
-  if(s==null)return null;
-  const m=String(s).replace(/[円¥,$株]/g,'').replace(/,/g,'').match(/[+-]?\d+(?:\.\d+)?/);
-  return m?Number(m[0]):null;
-}
-function labeledNumber(block,labels){
-  for(const label of labels){
-    const escLabel=label.replace(/[.*+?^${}()|[\]\\]/g,'\\$&');
-    const re=new RegExp(escLabel+'\\s*[:：]?\\s*([+\\-]?\\s*[¥￥$]?\\s*[\\d,]+(?:\\.\\d+)?)','i');
-    const m=block.match(re);if(m)return numFrom(m[1]);
-  }
-  return null;
-}
-function parsePayPayText(raw){
-  const text=normalizeOcrText(raw);
-  const lines=text.split('\n').map(x=>x.trim()).filter(Boolean);
-  const rows=[]; const used=new Set();
-  for(let i=0;i<lines.length;i++){
-    const cm=lines[i].match(/(?:^|\s|[（(])([1-9]\d{3})(?:\s|$|[）)])/);
-    if(!cm)continue;
-    const ticker=cm[1]; if(used.has(ticker))continue;
-    const start=Math.max(0,i-2), end=Math.min(lines.length,i+8);
-    const block=lines.slice(start,end).join('\n');
-    let name=lines[i].replace(cm[1],'').replace(/[()（）]/g,' ').replace(/(東証|日本株|PayPay証券|保有|詳細)/g,' ').replace(/\s+/g,' ').trim();
-    if(!name || /^\d/.test(name)){
-      const prev=lines.slice(Math.max(0,i-2),i).reverse().find(x=>/[一-龠ぁ-んァ-ヶA-Za-z]/.test(x) && !/(評価|損益|保有|円|株)/.test(x));
-      if(prev)name=prev.replace(/\s+/g,' ').trim();
-    }
-    const qty=labeledNumber(block,['保有数量','保有数','数量','株数']);
-    const value=labeledNumber(block,['評価額','時価評価額','評価金額','資産評価額']);
-    const pnl=labeledNumber(block,['評価損益','損益']);
-    let pct=labeledNumber(block,['損益率','評価損益率']);
-    if(pct==null){const pm=block.match(/([+\-]?\d+(?:\.\d+)?)\s*%/);if(pm)pct=Number(pm[1]);}
-    rows.push({ticker,name:name||ticker,qty,value,pnl,pct});used.add(ticker);
-  }
-  // Fallback: PayPay OCR may split ticker onto a separate line; create candidates from any 4-digit codes.
+function openPaypayQuick(){
+  const rows=data.holdings.map((h,index)=>({h,index})).filter(x=>x.h.broker==='PayPay証券');
+  paypayQuickRows.innerHTML='';paypayQuickData=[];
   if(!rows.length){
-    const codes=[...text.matchAll(/\b([1-9]\d{3})\b/g)].map(m=>m[1]);
-    [...new Set(codes)].slice(0,30).forEach(t=>rows.push({ticker:t,name:t,qty:null,value:null,pnl:null,pct:null}));
+    paypayQuickRows.innerHTML='<div class="candidate candidate-error">PayPay証券の保有株がまだありません。先に「＋追加」から1回だけ登録してください。</div>';
+    applyPaypayQuickBtn.disabled=true;paypayQuickDialog.showModal();return;
   }
-  return rows;
-}
-function enrichImportRow(r){
-  const existingIndex=data.holdings.findIndex(h=>h.broker==='PayPay証券' && String(h.ticker)===String(r.ticker));
-  const old=existingIndex>=0?data.holdings[existingIndex]:null;
-  let qty=r.qty ?? old?.qty ?? null;
-  let avg=old?.avg ?? null;
-  let price=old?.price ?? null;
-  if(r.value!=null && qty>0)price=r.value/qty;
-  if(r.value!=null && r.pnl!=null && qty>0)avg=(r.value-r.pnl)/qty;
-  return {...r,existingIndex,qty,avg,price};
-}
-function renderImportCandidates(rows){
-  importRows=rows.map(enrichImportRow);
-  importCandidates.innerHTML='';
-  if(!importRows.length){importCandidates.innerHTML='<div class="candidate candidate-error">銘柄コードを認識できませんでした。上の「読み取った文字」を開いて修正してから再解析してください。</div>';applyImportBtn.disabled=true;return;}
-  importRows.forEach((r,i)=>{
-    const ready=r.ticker && r.name && r.qty>0 && r.avg!=null && r.price!=null;
+  rows.forEach(({h,index},i)=>{
+    const currentValue=h.qty*h.price,currentPnl=currentValue-h.qty*h.avg;
+    paypayQuickData.push({index,value:null,pnl:null});
     const el=document.createElement('div');el.className='candidate';
-    el.innerHTML=`<div class="candidate-head"><strong>${esc(r.name||r.ticker)}</strong><span class="candidate-status ${r.existingIndex>=0?'update':''}">${r.existingIndex>=0?'既存を更新':'新規候補'}</span></div><div class="candidate-grid"><label>銘柄コード<input data-f="ticker" data-i="${i}" value="${esc(r.ticker||'')}"></label><label>銘柄名<input data-f="name" data-i="${i}" value="${esc(r.name||'')}"></label><label>保有数<input data-f="qty" data-i="${i}" inputmode="decimal" value="${r.qty??''}"></label><label>評価額<input data-f="value" data-i="${i}" inputmode="decimal" value="${r.value??''}"></label><label>評価損益<input data-f="pnl" data-i="${i}" inputmode="decimal" value="${r.pnl??''}"></label><label>損益率 %<input data-f="pct" data-i="${i}" inputmode="decimal" value="${r.pct??''}"></label></div><div class="candidate-help ${ready?'':'candidate-error'}">${ready?'更新可能です。':'不足項目あり。既存銘柄なら評価額・損益だけでも更新できます。新規銘柄は保有数が必要です。'}</div>`;
-    importCandidates.appendChild(el);
+    el.innerHTML=`<div class="candidate-head"><strong>${esc(h.name)}</strong><span class="candidate-status update">${esc(h.ticker)}</span></div><div class="candidate-grid"><label>評価額<input data-i="${i}" data-f="value" inputmode="decimal" placeholder="例：124725"></label><label>評価損益<input data-i="${i}" data-f="pnl" inputmode="decimal" placeholder="例：-14860"></label></div><div class="candidate-help">現在の登録：評価額 ${money(currentValue,h.market)} / 損益 ${currentPnl>=0?'+':''}${money(currentPnl,h.market)}<br>※ 空欄の銘柄は更新しません。</div>`;
+    paypayQuickRows.appendChild(el);
   });
-  importCandidates.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',()=>{
-    const i=+inp.dataset.i,f=inp.dataset.f;importRows[i][f]=['qty','value','pnl','pct'].includes(f)?numFrom(inp.value):inp.value.trim();
-    importRows[i]=enrichImportRow(importRows[i]);
-  }));
-  applyImportBtn.disabled=false;
+  paypayQuickRows.querySelectorAll('input').forEach(inp=>inp.addEventListener('input',()=>{paypayQuickData[+inp.dataset.i][inp.dataset.f]=parseQuickNumber(inp.value);}));
+  applyPaypayQuickBtn.disabled=false;paypayQuickDialog.showModal();
 }
-function resetImporter(){
-  paypayImages.value='';paypayPreview.innerHTML='';ocrRawText.value='';importCandidates.innerHTML='';importRows=[];ocrProgress.style.width='0%';ocrStatus.textContent='画像を選択してください';runOcrBtn.disabled=true;applyImportBtn.disabled=true;
-}
-document.querySelector('#paypayImportBtn').onclick=()=>{resetImporter();paypayImportDialog.showModal();};
-paypayImages.addEventListener('change',()=>{
-  paypayPreview.innerHTML='';const files=[...paypayImages.files];
-  files.forEach((f,i)=>{const u=URL.createObjectURL(f),d=document.createElement('div');d.className='preview-item';d.innerHTML=`<img alt="スクショ${i+1}" src="${u}"><span>${i+1}枚目</span>`;paypayPreview.appendChild(d);});
-  runOcrBtn.disabled=!files.length;ocrStatus.textContent=files.length?`${files.length}枚選択しました。解析できます。`:'画像を選択してください';
-});
-runOcrBtn.onclick=async()=>{
-  const files=[...paypayImages.files];if(!files.length)return;
-  if(!window.Tesseract){ocrStatus.textContent='OCRライブラリを読み込めませんでした。通信状態を確認してください。';return;}
-  runOcrBtn.disabled=true;applyImportBtn.disabled=true;ocrRawText.value='';importCandidates.innerHTML='';
-  const chunks=[];
-  try{
-    for(let i=0;i<files.length;i++){
-      ocrStatus.textContent=`${i+1}/${files.length}枚目を読み取り中… 初回は日本語辞書の取得で少し時間がかかります`;
-      const result=await Tesseract.recognize(files[i],'jpn+eng',{logger:m=>{if(m.status==='recognizing text'){const base=i/files.length,part=(m.progress||0)/files.length;ocrProgress.style.width=Math.round((base+part)*100)+'%';}}});
-      chunks.push(result.data.text||'');
-    }
-    const raw=normalizeOcrText(chunks.join('\n\n--- 次のスクショ ---\n\n'));ocrRawText.value=raw;ocrProgress.style.width='100%';ocrStatus.textContent='文字の読み取り完了。内容を確認してください。';renderImportCandidates(parsePayPayText(raw));
-  }catch(err){console.error(err);ocrStatus.textContent='画像解析に失敗しました。別のスクショで再試行するか、読み取った文字欄へ手入力してください。';}
-  runOcrBtn.disabled=false;
-};
-reparseOcrBtn.onclick=()=>{renderImportCandidates(parsePayPayText(ocrRawText.value));ocrStatus.textContent='修正した文字から再解析しました。';};
-applyImportBtn.onclick=()=>{
-  let updated=0,added=0,skipped=0;
-  importRows.forEach(raw=>{
-    let r=enrichImportRow(raw); const idx=data.holdings.findIndex(h=>h.broker==='PayPay証券' && String(h.ticker)===String(r.ticker)); const old=idx>=0?data.holdings[idx]:null;
-    const qty=r.qty??old?.qty; let price=r.price??old?.price,avg=r.avg??old?.avg;
-    if(r.value!=null && qty>0)price=r.value/qty;
-    if(r.value!=null && r.pnl!=null && qty>0)avg=(r.value-r.pnl)/qty;
-    if(!r.ticker || !qty || avg==null || price==null){skipped++;return;}
-    const h={broker:'PayPay証券',market:'JP',name:(r.name&&r.name!==r.ticker)?r.name:(old?.name||r.ticker),ticker:String(r.ticker),qty:+qty,avg:+avg,price:+price,note:old?.note||'PayPayスクショ更新',updatedAt:new Date().toISOString()};
-    if(idx>=0){data.holdings[idx]={...old,...h};updated++;}else{data.holdings.push(h);added++;}
+document.querySelector('#paypayQuickBtn').onclick=openPaypayQuick;
+applyPaypayQuickBtn.onclick=()=>{
+  let updated=0,skipped=0;
+  paypayQuickData.forEach(r=>{
+    if(r.value==null && r.pnl==null)return;
+    if(r.value==null || r.pnl==null){skipped++;return;}
+    const h=data.holdings[r.index];
+    if(!h || !(h.qty>0) || r.value<0){skipped++;return;}
+    const cost=r.value-r.pnl;
+    if(cost<0){skipped++;return;}
+    h.price=r.value/h.qty;
+    h.avg=cost/h.qty;
+    h.updatedAt=new Date().toISOString();
+    h.note=h.note||'PayPay簡単更新';
+    updated++;
   });
-  save();render();runStartupResearch();paypayImportDialog.close();alert(`PayPay一覧を反映しました\n更新 ${updated}件 / 新規 ${added}件${skipped?` / 保留 ${skipped}件`:''}`);
+  save();render();runStartupResearch();paypayQuickDialog.close();
+  alert(`PayPay簡単更新：${updated}件${skipped?` / 入力不足・異常値 ${skipped}件`:''}`);
 };
 
 document.querySelector('#notifyBtn').onclick=async()=>{if(!('Notification'in window)){alert('このブラウザは通知に対応していません');return}const p=await Notification.requestPermission();if(p==='granted')new Notification('相棒 STOCK',{body:'起動時調査の通知テストです'});};
