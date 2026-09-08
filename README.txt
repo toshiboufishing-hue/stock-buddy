@@ -1,4 +1,4 @@
-相棒STOCK v0.5
+相棒STOCK v0.51
 
 変更：保有株登録から平均取得単価・現在値を廃止し、保有数＋評価額方式へ変更。PayPay簡単更新は評価額＋評価損益で損益情報を更新。
 
@@ -44,3 +44,8 @@ index.html / styles.css / app.js / manifest.webmanifest / sw.js / README.txt
 - OCR結果を確認・修正してから既存銘柄を更新 / 新規候補を追加
 - 画像自体はサーバーへ保存・送信しない設計
 - OCRはTesseract.jsをCDNから読み込み（初回は通信が必要）
+
+
+v0.51 修正
+- 保有株の保存ボタンを通常ボタン処理へ変更
+- form/dialog依存を外し、入力検証後に明示保存

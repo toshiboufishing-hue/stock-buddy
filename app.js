@@ -82,7 +82,18 @@ const holdingDialog=document.querySelector('#holdingDialog');
 document.querySelector('#addHoldingBtn').onclick=()=>{document.querySelector('#holdingForm').reset();document.querySelector('#holdingEditIndex').value='';document.querySelector('#holdingDialogTitle').textContent='保有株を追加';holdingDialog.showModal();};
 function openHoldingEdit(i){const h=data.holdings[i];document.querySelector('#holdingEditIndex').value=i;document.querySelector('#holdingDialogTitle').textContent='保有株を編集';document.querySelector('#broker').value=h.broker;document.querySelector('#market').value=h.market||'JP';document.querySelector('#name').value=h.name;document.querySelector('#ticker').value=h.ticker;document.querySelector('#qty').value=h.qty;document.querySelector('#holdingValue').value=holdingValue(h);document.querySelector('#holdingNote').value=h.note||'';holdingDialog.showModal();}
 function deleteHolding(i){if(confirm(`${data.holdings[i].name} を削除しますか？`)){data.holdings.splice(i,1);save();render();runStartupResearch();}}
-document.querySelector('#holdingForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();const idx=document.querySelector('#holdingEditIndex').value;const prev=idx===''?{}:data.holdings[+idx];const h={...prev,broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),qty:+document.querySelector('#qty').value,value:+document.querySelector('#holdingValue').value,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString()};delete h.avg;delete h.price;if(idx==='')data.holdings.push(h);else data.holdings[+idx]=h;save();render();holdingDialog.close();runStartupResearch();});
+document.querySelector('#cancelHolding').onclick=()=>holdingDialog.close();
+document.querySelector('#saveHolding').onclick=()=>{
+  const form=document.querySelector('#holdingForm');
+  if(!form.reportValidity()) return;
+  const idx=document.querySelector('#holdingEditIndex').value;
+  const prev=idx===''?{}:data.holdings[+idx];
+  const h={...prev,broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),qty:+document.querySelector('#qty').value,value:+document.querySelector('#holdingValue').value,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString()};
+  delete h.avg; delete h.price;
+  if(idx==='') data.holdings.push(h); else data.holdings[+idx]=h;
+  save(); render(); holdingDialog.close(); runStartupResearch();
+};
+document.querySelector('#holdingForm').addEventListener('submit',e=>e.preventDefault());
 
 const watchDialog=document.querySelector('#watchDialog');document.querySelector('#addWatchBtn').onclick=()=>{document.querySelector('#watchForm').reset();watchDialog.showModal();};
 document.querySelector('#watchForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();data.radar.push({market:document.querySelector('#watchMarket').value,name:document.querySelector('#watchName').value.trim(),ticker:document.querySelector('#watchTicker').value.trim().toUpperCase(),price:+document.querySelector('#watchPrice').value||0,reason:document.querySelector('#watchReason').value.trim(),addedAt:new Date().toISOString()});save();render();watchDialog.close();runStartupResearch();});

@@ -109,7 +109,7 @@
   </nav>
 
   <dialog id="holdingDialog">
-    <form method="dialog" id="holdingForm">
+    <form id="holdingForm">
       <h3 id="holdingDialogTitle">保有株を追加</h3>
       <input id="holdingEditIndex" type="hidden" value="" />
       <label>証券会社<select id="broker"><option>PayPay証券</option><option>moomoo証券</option><option>その他</option></select></label>
@@ -119,7 +119,7 @@
       <label>保有数<input id="qty" type="number" step="0.0001" min="0" required /></label>
       <label>評価額<input id="holdingValue" type="number" step="0.01" min="0" required placeholder="例：124725" /></label>
       <label>メモ<input id="holdingNote" placeholder="例：決算前は注意" /></label>
-      <div class="dialog-actions"><button value="cancel">キャンセル</button><button id="saveHolding" value="default" class="primary">保存</button></div>
+      <div class="dialog-actions"><button type="button" id="cancelHolding">キャンセル</button><button type="button" id="saveHolding" class="primary">保存</button></div>
     </form>
   </dialog>
 
