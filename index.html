@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#101417" />
   <title>相棒 STOCK</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=0.55.0" />
+  <link rel="stylesheet" href="styles.css?v=0.57.0" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.56</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.57</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -44,6 +44,15 @@
         <span>AI総合</span>
         <strong id="overallSignal">未判定</strong>
       </div>
+    </section>
+
+    <section class="card history-card portfolio-history-card">
+      <div class="history-head">
+        <div><div class="muted">運用資産の推移</div><strong>ポートフォリオ履歴</strong></div>
+        <span id="portfolioHistoryCount" class="history-count">0点</span>
+      </div>
+      <div id="portfolioChart" class="history-chart"></div>
+      <div id="portfolioHistoryEmpty" class="chart-empty">評価額を更新するたびに履歴が増えていきます。</div>
     </section>
 
     <section class="grid-2">
@@ -86,7 +95,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.56 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.57 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -107,6 +116,15 @@
     <button class="nav-btn" data-tab="sns"><span>🔎</span><small>SNS</small></button>
     <button class="nav-btn" data-tab="settings"><span>⚙️</span><small>設定</small></button>
   </nav>
+
+  <dialog id="historyDialog" class="history-dialog">
+    <div class="history-dialog-body">
+      <div class="history-dialog-head"><div><div class="muted">評価額の推移</div><h3 id="historyTitle">銘柄</h3></div><button type="button" id="closeHistory" class="mini-btn">閉じる</button></div>
+      <div id="holdingHistoryMeta" class="history-summary"></div>
+      <div id="holdingHistoryChart" class="history-chart large"></div>
+      <div id="holdingHistoryEmpty" class="chart-empty">まだ履歴がありません。評価額を更新すると記録されます。</div>
+    </div>
+  </dialog>
 
   <dialog id="holdingDialog">
     <form id="holdingForm">
@@ -148,6 +166,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.56.0"></script>
+  <script src="app.js?v=0.57.0"></script>
 </body>
 </html>

@@ -1,8 +1,10 @@
-const APP_VERSION='0.56.0';
+const APP_VERSION='0.57.0';
 const STORAGE_KEY='stockBuddyDataV02';
-const seed={holdings:[],radar:[],research:{lastRun:null,lastSummary:null}};
+const seed={holdings:[],radar:[],portfolioHistory:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
 let data=loadData();
+if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
+(data.holdings||[]).forEach(h=>{if(!Array.isArray(h.history))h.history=[];});
 
 function loadData(){
   const current=JSON.parse(localStorage.getItem(STORAGE_KEY)||'null');
@@ -135,6 +137,65 @@ function setupCompanyLookup(tickerId,nameId,marketId){
 }
 
 
+function historyPoint(value, market='JP'){
+  return {at:new Date().toISOString(),value:+value||0,market};
+}
+function appendHoldingHistory(h){
+  if(!Array.isArray(h.history))h.history=[];
+  const value=holdingValue(h),last=h.history[h.history.length-1];
+  if(!last || +last.value!==+value)h.history.push(historyPoint(value,h.market||'JP'));
+  if(h.history.length>500)h.history=h.history.slice(-500);
+}
+function portfolioSnapshot(){
+  let jp=0,us=0;
+  data.holdings.forEach(h=>{const v=holdingValue(h);if(h.market==='US'&&h.broker!=='PayPay証券')us+=v;else jp+=v;});
+  return {at:new Date().toISOString(),jp,us};
+}
+function appendPortfolioHistory(){
+  if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
+  const point=portfolioSnapshot(),last=data.portfolioHistory[data.portfolioHistory.length-1];
+  if(!last || +last.jp!==+point.jp || +last.us!==+point.us)data.portfolioHistory.push(point);
+  if(data.portfolioHistory.length>500)data.portfolioHistory=data.portfolioHistory.slice(-500);
+}
+function ensureInitialHistory(){
+  let changed=false;
+  data.holdings.forEach(h=>{if(!Array.isArray(h.history))h.history=[];if(!h.history.length){h.history.push(historyPoint(holdingValue(h),h.market||'JP'));changed=true;}});
+  if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
+  if(!data.portfolioHistory.length && data.holdings.length){data.portfolioHistory.push(portfolioSnapshot());changed=true;}
+  if(changed)save();
+}
+function chartDate(iso){const d=new Date(iso);return `${d.getMonth()+1}/${d.getDate()}`;}
+function renderLineChart(el,points,seriesDefs){
+  if(!el)return;
+  if(!points.length){el.innerHTML='';return;}
+  const W=640,H=220,pad={l:44,r:16,t:16,b:30};
+  const vals=[];seriesDefs.forEach(sd=>points.forEach(p=>{const v=+p[sd.key];if(Number.isFinite(v))vals.push(v);}));
+  if(!vals.length){el.innerHTML='';return;}
+  let min=Math.min(...vals),max=Math.max(...vals); if(min===max){min=Math.max(0,min*.95);max=max*1.05+1;}
+  const span=max-min||1, n=Math.max(points.length-1,1);
+  const x=i=>pad.l+(W-pad.l-pad.r)*(i/n), y=v=>pad.t+(H-pad.t-pad.b)*(1-(v-min)/span);
+  const grid=[0,.25,.5,.75,1].map(t=>{const yy=pad.t+(H-pad.t-pad.b)*t;const val=max-span*t;return `<line x1="${pad.l}" y1="${yy}" x2="${W-pad.r}" y2="${yy}" class="chart-grid"/><text x="${pad.l-6}" y="${yy+4}" class="chart-label" text-anchor="end">${Math.round(val).toLocaleString()}</text>`}).join('');
+  const lines=seriesDefs.map((sd,si)=>{const pts=points.map((p,i)=>`${x(i)},${y(+p[sd.key]||0)}`).join(' ');return `<polyline points="${pts}" class="chart-line chart-line-${si}" fill="none"/><circle cx="${x(points.length-1)}" cy="${y(+points[points.length-1][sd.key]||0)}" r="4" class="chart-dot chart-dot-${si}"/>`;}).join('');
+  const first=chartDate(points[0].at),last=chartDate(points[points.length-1].at);
+  el.innerHTML=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="評価額推移グラフ">${grid}${lines}<text x="${pad.l}" y="${H-7}" class="chart-label">${first}</text><text x="${W-pad.r}" y="${H-7}" class="chart-label" text-anchor="end">${last}</text></svg>`;
+}
+function renderPortfolioHistory(){
+  const points=data.portfolioHistory||[],chart=document.querySelector('#portfolioChart'),empty=document.querySelector('#portfolioHistoryEmpty'),count=document.querySelector('#portfolioHistoryCount');
+  if(count)count.textContent=`${points.length}点`;
+  if(empty)empty.hidden=points.length>0;
+  const hasUS=points.some(p=>+p.us>0);
+  renderLineChart(chart,points,hasUS?[{key:'jp'},{key:'us'}]:[{key:'jp'}]);
+}
+function openHoldingHistory(i){
+  const h=data.holdings[i];if(!h)return;
+  document.querySelector('#historyTitle').textContent=`${h.name}（${h.ticker}）`;
+  const points=h.history||[],empty=document.querySelector('#holdingHistoryEmpty');empty.hidden=points.length>0;
+  const current=holdingValue(h),first=points.length?+points[0].value:current,change=current-first,pct=first?change/first*100:0;
+  document.querySelector('#holdingHistoryMeta').innerHTML=`<span>現在 <b>${money(current,h.market)}</b></span><span>記録開始比 <b class="${change>=0?'positive':'negative'}">${change>=0?'+':''}${money(change,h.market)} (${pct>=0?'+':''}${pct.toFixed(1)}%)</b></span><span>${points.length}点</span>`;
+  renderLineChart(document.querySelector('#holdingHistoryChart'),points.map(p=>({at:p.at,value:p.value})),[{key:'value'}]);
+  document.querySelector('#historyDialog').showModal();
+}
+
 function save(){localStorage.setItem(STORAGE_KEY,JSON.stringify(data));}
 function esc(s=''){return String(s).replace(/[&<>'"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;',"'":'&#39;','"':'&quot;'}[c]));}
 function holdingValue(h){return Number.isFinite(+h.value)?+h.value:(+h.qty||0)*(+h.price||0);}
@@ -157,18 +218,20 @@ function signalReason(h){
   if(pct>=8)return'含み益圏。材料が崩れていないか確認';
   return'損益だけでは強い判断材料なし。最新情報待ち';
 }
-function render(){renderHoldings();renderRadar();renderTotals();}
+function render(){renderHoldings();renderRadar();renderTotals();renderPortfolioHistory();}
 function renderHoldings(){
   const list=document.querySelector('#holdingsList');list.innerHTML='';
   if(!data.holdings.length){list.innerHTML='<article class="card empty-card"><strong>まだ保有株がありません</strong>「＋追加」から実際の保有銘柄を登録すると、次回起動時から自動で調査対象になります。</article>';return;}
   data.holdings.forEach((h,i)=>{
     const signal=deriveSignal(h),s=signalMap[signal];
     const value=holdingValue(h),cost=holdingCost(h),pnl=cost!=null?value-cost:null,pct=cost?pnl/cost*100:null;
-    const el=document.createElement('article');el.className='card holding';
+    const el=document.createElement('article');el.className='card holding';el.dataset.index=i;
     const pinfo=productInfo(h);
-    el.innerHTML=`<div class="row"><div><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}</div><div class="product-tags">${h.accountCourse==='challenge'?'<span class="product-tag special">PayPayチャレンジ</span>':''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div></div><div><div class="price">${money(value,h.market)}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${money(pnl,h.market)} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="signal ${s[2]}">${s[0]} ${s[1]}</div><p class="bullet">${signalReason(h)}<br><span class="risk-note">商品特性：${esc(pinfo.risk)}</span>${h.note?`<br>メモ：${esc(h.note)}`:''}</p><div class="meta-grid"><div class="meta"><b>${h.qty}</b><span>保有数</span></div><div class="meta"><b>${money(value,h.market)}</b><span>評価額</span></div><div class="meta"><b>${h.qty>0?money(value/h.qty,h.market):'—'}</b><span>評価単価</span></div></div><div class="card-actions"><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div>`;
+    el.innerHTML=`<div class="row"><div><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}</div><div class="product-tags">${h.accountCourse==='challenge'?'<span class="product-tag special">PayPayチャレンジ</span>':''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div></div><div><div class="price">${money(value,h.market)}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${money(pnl,h.market)} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="signal ${s[2]}">${s[0]} ${s[1]}</div><p class="bullet">${signalReason(h)}<br><span class="risk-note">商品特性：${esc(pinfo.risk)}</span>${h.note?`<br>メモ：${esc(h.note)}`:''}</p><div class="meta-grid"><div class="meta"><b>${h.qty}</b><span>保有数</span></div><div class="meta"><b>${money(value,h.market)}</b><span>評価額</span></div><div class="meta"><b>${h.qty>0?money(value/h.qty,h.market):'—'}</b><span>評価単価</span></div></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈 推移</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div>`;
     list.appendChild(el);
   });
+  document.querySelectorAll('.history-holding').forEach(b=>b.onclick=e=>{e.stopPropagation();openHoldingHistory(+b.dataset.index)});
+  document.querySelectorAll('.holding').forEach(card=>card.onclick=e=>{if(e.target.closest('button'))return;openHoldingHistory(+card.dataset.index)});
   document.querySelectorAll('.edit-holding').forEach(b=>b.onclick=()=>openHoldingEdit(+b.dataset.index));
   document.querySelectorAll('.delete-holding').forEach(b=>b.onclick=()=>deleteHolding(+b.dataset.index));
 }
@@ -202,8 +265,9 @@ document.querySelector('#accountCourse')?.addEventListener('change',refreshProdu
 const holdingDialog=document.querySelector('#holdingDialog');
 document.querySelector('#addHoldingBtn').onclick=()=>{document.querySelector('#holdingForm').reset();document.querySelector('#holdingEditIndex').value='';document.querySelector('#holdingDialogTitle').textContent='保有株を追加';document.querySelector('#productType').value='auto';document.querySelector('#accountCourse').value='normal';refreshProductHint();holdingDialog.showModal();};
 function openHoldingEdit(i){const h=data.holdings[i];document.querySelector('#holdingEditIndex').value=i;document.querySelector('#holdingDialogTitle').textContent='保有株を編集';document.querySelector('#broker').value=h.broker;document.querySelector('#market').value=h.market||'JP';document.querySelector('#name').value=h.name;document.querySelector('#ticker').value=h.ticker;document.querySelector('#qty').value=h.qty;document.querySelector('#holdingValue').value=holdingValue(h);const editCost=holdingCost(h);document.querySelector('#holdingPnl').value=editCost==null?'':holdingValue(h)-editCost;document.querySelector('#holdingNote').value=h.note||'';let pt=h.productType||'auto';let course=h.accountCourse||'normal';if(pt==='challenge'){course='challenge';pt='auto';}document.querySelector('#productType').value=pt;document.querySelector('#accountCourse').value=course;refreshProductHint();holdingDialog.showModal();}
-function deleteHolding(i){if(confirm(`${data.holdings[i].name} を削除しますか？`)){data.holdings.splice(i,1);save();render();runStartupResearch();}}
+function deleteHolding(i){if(confirm(`${data.holdings[i].name} を削除しますか？`)){data.holdings.splice(i,1);appendPortfolioHistory();save();render();runStartupResearch();}}
 document.querySelector('#cancelHolding').onclick=()=>holdingDialog.close();
+document.querySelector('#closeHistory').onclick=()=>document.querySelector('#historyDialog').close();
 document.querySelector('#saveHolding').onclick=()=>{
   const form=document.querySelector('#holdingForm');
   if(!form.reportValidity()) return;
@@ -216,7 +280,9 @@ document.querySelector('#saveHolding').onclick=()=>{
   if(costBasis<0){alert('評価損益の値を確認してください。取得総額がマイナスになっています。');return;}
   const h={...prev,broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),accountCourse:document.querySelector('#accountCourse').value,productType:document.querySelector('#productType').value,qty:+document.querySelector('#qty').value,value,costBasis,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString()};
   delete h.avg; delete h.price;
+  appendHoldingHistory(h);
   if(idx==='') data.holdings.push(h); else data.holdings[+idx]=h;
+  appendPortfolioHistory();
   save(); render(); holdingDialog.close(); runStartupResearch();
 };
 document.querySelector('#holdingForm').addEventListener('submit',e=>e.preventDefault());
@@ -302,14 +368,18 @@ applyPaypayQuickBtn.onclick=()=>{
     delete h.price; delete h.avg;
     h.updatedAt=new Date().toISOString();
     h.note=h.note||'PayPay簡単更新';
+    appendHoldingHistory(h);
     updated++;
   });
+  if(updated)appendPortfolioHistory();
   save();render();runStartupResearch();paypayQuickDialog.close();
   alert(`PayPay簡単更新：${updated}件${skipped?` / 入力不足・異常値 ${skipped}件`:''}`);
 };
 
 document.querySelector('#notifyBtn').onclick=async()=>{if(!('Notification'in window)){alert('このブラウザは通知に対応していません');return}const p=await Notification.requestPermission();if(p==='granted')new Notification('相棒 STOCK',{body:'起動時調査の通知テストです'});};
 document.querySelector('#resetBtn').onclick=()=>{if(confirm('保有株・監視株を含む全データを初期化しますか？')){data=clone(seed);save();render();runStartupResearch();}};
+
+ensureInitialHistory();
 
 if('serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}
 render();runStartupResearch();
