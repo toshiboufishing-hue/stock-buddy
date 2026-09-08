@@ -1,4 +1,4 @@
-const APP_VERSION='0.57.0';
+const APP_VERSION='0.59.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -137,6 +137,49 @@ function setupCompanyLookup(tickerId,nameId,marketId){
 }
 
 
+
+
+// v0.59: 市場データの鮮度管理（自動株価取得の受け皿）
+function isoNow(){return new Date().toISOString();}
+function quoteMeta(h={}){
+  const at=h.quoteUpdatedAt||h.updatedAt||(Array.isArray(h.history)&&h.history.length?h.history[h.history.length-1].at:null);
+  const source=h.quoteSource||'manual';
+  const failed=h.quoteStatus==='failed';
+  const ageMs=at?Date.now()-new Date(at).getTime():Infinity;
+  const ageMin=ageMs/60000;
+  let level='yellow',label='手入力';
+  if(failed){level='red';label='取得失敗';}
+  else if(source!=='manual' && ageMin<=5){level='green';label='最新';}
+  else if(source!=='manual' && ageMin<=30){level='yellow';label='遅延';}
+  else if(source!=='manual' && ageMin>30){level='red';label='古い';}
+  else if(source==='manual' && ageMin>1440){level='red';label='手入力・古い';}
+  return {at,source,level,label,ageMin};
+}
+function formatQuoteTime(iso){
+  if(!iso)return'時刻なし';
+  const d=new Date(iso);if(Number.isNaN(d.getTime()))return'時刻不明';
+  return `${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+function quoteSourceLabel(source){return ({manual:'手入力',market:'市場データ',moomoo:'moomoo',tachibana:'立花API',finnhub:'Finnhub'})[source]||String(source||'データ');}
+function applyMarketQuote(ticker,market,quote={}){
+  const h=data.holdings.find(x=>String(x.ticker).toUpperCase()===String(ticker).toUpperCase() && (x.market||'JP')===(market||'JP'));
+  if(!h)return false;
+  const price=Number(quote.price);
+  if(!(price>=0) || !(h.qty>=0))return false;
+  h.price=price;
+  h.value=price*(+h.qty||0);
+  h.quoteUpdatedAt=quote.at||isoNow();
+  h.quoteSource=quote.source||'market';
+  h.quoteStatus='ok';
+  h.updatedAt=h.quoteUpdatedAt;
+  appendHoldingHistory(h);appendPortfolioHistory();save();render();return true;
+}
+function markQuoteFailed(ticker,market){
+  const h=data.holdings.find(x=>String(x.ticker).toUpperCase()===String(ticker).toUpperCase() && (x.market||'JP')===(market||'JP'));
+  if(!h)return false;h.quoteStatus='failed';save();render();return true;
+}
+window.StockBuddyMarket={applyMarketQuote,markQuoteFailed};
+
 function historyPoint(value, market='JP'){
   return {at:new Date().toISOString(),value:+value||0,market};
 }
@@ -249,7 +292,8 @@ function renderHoldings(){
     const el=document.createElement('article');el.className=`card holding compact-holding ${important?'important-holding':''}`;el.dataset.index=i;
     const pinfo=productInfo(h);
     const reason=signalReason(h);
-    el.innerHTML=`${important?'<div class="priority-banner">🚨 最重要・強制トップ</div>':''}<div class="compact-top"><div class="holding-main"><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}</div></div><div class="holding-money"><div class="price">${money(value,h.market)}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${money(pnl,h.market)} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="compact-status"><span class="direction ${dir[2]}"><b>${dir[0]}</b> ${dir[1]}</span><span class="signal ${s[2]}">${s[0]} ${s[1]}</span></div><div class="ai-comment ${important?'critical':''}"><span class="ai-label">AIコメント</span><strong>${esc(reason)}</strong></div><div class="compact-foot"><div class="product-tags">${h.accountCourse==='challenge'?'<span class="product-tag special">PayPayチャレンジ</span>':''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div></div>`;
+    const qm=quoteMeta(h);
+    el.innerHTML=`${important?'<div class="priority-banner">🚨 最重要・強制トップ</div>':''}<div class="compact-top"><div class="holding-main"><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}</div></div><div class="holding-money"><div class="price">${money(value,h.market)}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${money(pnl,h.market)} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="quote-freshness ${qm.level}"><span class="fresh-dot"></span><b>${qm.label}</b><span>${formatQuoteTime(qm.at)}</span><small>${quoteSourceLabel(qm.source)}</small></div><div class="compact-status"><span class="direction ${dir[2]}"><b>${dir[0]}</b> ${dir[1]}</span><span class="signal ${s[2]}">${s[0]} ${s[1]}</span></div><div class="ai-comment ${important?'critical':''}"><span class="ai-label">AIコメント</span><strong>${esc(reason)}</strong></div><div class="compact-foot"><div class="product-tags">${h.accountCourse==='challenge'?'<span class="product-tag special">PayPayチャレンジ</span>':''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div></div>`;
     list.appendChild(el);
   });
   document.querySelectorAll('.history-holding').forEach(b=>b.onclick=e=>{e.stopPropagation();openHoldingHistory(+b.dataset.index)});
@@ -300,7 +344,7 @@ document.querySelector('#saveHolding').onclick=()=>{
   if(pnl==null){alert('評価損益を数字で入力してください。マイナスは「-」でも「－」でもOKです。');return;}
   const costBasis=value-pnl;
   if(costBasis<0){alert('評価損益の値を確認してください。取得総額がマイナスになっています。');return;}
-  const h={...prev,broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),accountCourse:document.querySelector('#accountCourse').value,productType:document.querySelector('#productType').value,qty:+document.querySelector('#qty').value,value,costBasis,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString()};
+  const h={...prev,broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),accountCourse:document.querySelector('#accountCourse').value,productType:document.querySelector('#productType').value,qty:+document.querySelector('#qty').value,value,costBasis,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString(),quoteUpdatedAt:new Date().toISOString(),quoteSource:'manual',quoteStatus:'ok'};
   delete h.avg; delete h.price;
   appendHoldingHistory(h);
   if(idx==='') data.holdings.push(h); else data.holdings[+idx]=h;
@@ -313,7 +357,7 @@ const watchDialog=document.querySelector('#watchDialog');document.querySelector(
 document.querySelector('#watchForm').addEventListener('submit',e=>{if(e.submitter?.value==='cancel')return;e.preventDefault();data.radar.push({market:document.querySelector('#watchMarket').value,name:document.querySelector('#watchName').value.trim(),ticker:document.querySelector('#watchTicker').value.trim().toUpperCase(),price:+document.querySelector('#watchPrice').value||0,reason:document.querySelector('#watchReason').value.trim(),addedAt:new Date().toISOString()});save();render();watchDialog.close();runStartupResearch();});
 
 function buildResearchPrompt(){
-  const holdings=data.holdings.map(h=>{const p=productInfo(h);return `- [保有] ${h.market} ${h.ticker} ${h.name} / ${h.broker} / コース:${h.accountCourse==='challenge'?'PayPayチャレンジ':h.accountCourse==='nisa'?'NISA':'通常'} / 商品:${p.label} / 数量 ${h.qty} / 評価額 ${holdingValue(h)}${h.note?` / メモ: ${h.note}`:''}`}).join('\n');
+  const holdings=data.holdings.map(h=>{const p=productInfo(h);return `- [保有] ${h.market} ${h.ticker} ${h.name} / ${h.broker} / コース:${h.accountCourse==='challenge'?'PayPayチャレンジ':h.accountCourse==='nisa'?'NISA':'通常'} / 商品:${p.label} / 数量 ${h.qty} / 評価額 ${holdingValue(h)} / データ時刻:${formatQuoteTime(quoteMeta(h).at)} / データ状態:${quoteMeta(h).label}${h.note?` / メモ: ${h.note}`:''}`}).join('\n');
   const watch=data.radar.map(r=>`- [監視] ${r.market} ${r.ticker} ${r.name}${r.price?` / 現在 ${r.price}`:''}${r.reason?` / 理由: ${r.reason}`:''}`).join('\n');
   return `相棒STOCK 起動時調査。以下の銘柄について、現在時点の最新情報をWebで調査してください。株価・出来高/売買代金・適時開示/IR・決算・ニュース・地政学/政策・SNSの注目変化を確認し、情報の鮮度と資金流入を重視してください。煽り投稿は必ず一次情報で裏取りしてください。レバレッジETF・インバースETF・PayPayチャレンジコースは普通株と同じロジックで評価せず、日次倍率・ボラティリティ・長期保有時の乖離/減価・対象指数/原資産を別途確認してください。各銘柄を 🚀買い候補 / 🔥保有継続 / ⚪待ち / 💰利確検討 / 🚨売却警戒 の5段階で、根拠・否定材料・次に見る条件とともに簡潔に判定してください。\n\n${holdings||'- 保有株なし'}\n${watch||'- 監視株なし'}`;
 }
@@ -389,6 +433,9 @@ applyPaypayQuickBtn.onclick=()=>{
     h.costBasis=cost;
     delete h.price; delete h.avg;
     h.updatedAt=new Date().toISOString();
+    h.quoteUpdatedAt=h.updatedAt;
+    h.quoteSource='manual';
+    h.quoteStatus='ok';
     h.note=h.note||'PayPay簡単更新';
     appendHoldingHistory(h);
     updated++;
