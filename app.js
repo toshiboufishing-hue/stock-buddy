@@ -1,4 +1,4 @@
-const APP_VERSION='0.5.0';
+const APP_VERSION='0.52.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -80,7 +80,7 @@ document.querySelectorAll('[data-tab]').forEach(b=>b.addEventListener('click',()
 
 const holdingDialog=document.querySelector('#holdingDialog');
 document.querySelector('#addHoldingBtn').onclick=()=>{document.querySelector('#holdingForm').reset();document.querySelector('#holdingEditIndex').value='';document.querySelector('#holdingDialogTitle').textContent='保有株を追加';holdingDialog.showModal();};
-function openHoldingEdit(i){const h=data.holdings[i];document.querySelector('#holdingEditIndex').value=i;document.querySelector('#holdingDialogTitle').textContent='保有株を編集';document.querySelector('#broker').value=h.broker;document.querySelector('#market').value=h.market||'JP';document.querySelector('#name').value=h.name;document.querySelector('#ticker').value=h.ticker;document.querySelector('#qty').value=h.qty;document.querySelector('#holdingValue').value=holdingValue(h);document.querySelector('#holdingNote').value=h.note||'';holdingDialog.showModal();}
+function openHoldingEdit(i){const h=data.holdings[i];document.querySelector('#holdingEditIndex').value=i;document.querySelector('#holdingDialogTitle').textContent='保有株を編集';document.querySelector('#broker').value=h.broker;document.querySelector('#market').value=h.market||'JP';document.querySelector('#name').value=h.name;document.querySelector('#ticker').value=h.ticker;document.querySelector('#qty').value=h.qty;document.querySelector('#holdingValue').value=holdingValue(h);const editCost=holdingCost(h);document.querySelector('#holdingPnl').value=editCost==null?'':holdingValue(h)-editCost;document.querySelector('#holdingNote').value=h.note||'';holdingDialog.showModal();}
 function deleteHolding(i){if(confirm(`${data.holdings[i].name} を削除しますか？`)){data.holdings.splice(i,1);save();render();runStartupResearch();}}
 document.querySelector('#cancelHolding').onclick=()=>holdingDialog.close();
 document.querySelector('#saveHolding').onclick=()=>{
@@ -88,7 +88,11 @@ document.querySelector('#saveHolding').onclick=()=>{
   if(!form.reportValidity()) return;
   const idx=document.querySelector('#holdingEditIndex').value;
   const prev=idx===''?{}:data.holdings[+idx];
-  const h={...prev,broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),qty:+document.querySelector('#qty').value,value:+document.querySelector('#holdingValue').value,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString()};
+  const value=+document.querySelector('#holdingValue').value;
+  const pnl=+document.querySelector('#holdingPnl').value;
+  const costBasis=value-pnl;
+  if(costBasis<0){alert('評価損益の値を確認してください。取得総額がマイナスになっています。');return;}
+  const h={...prev,broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),qty:+document.querySelector('#qty').value,value,costBasis,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString()};
   delete h.avg; delete h.price;
   if(idx==='') data.holdings.push(h); else data.holdings[+idx]=h;
   save(); render(); holdingDialog.close(); runStartupResearch();
