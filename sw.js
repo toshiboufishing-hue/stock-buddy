@@ -1,4 +1,4 @@
-const CACHE='stock-buddy-v052';
+const CACHE='stock-buddy-v053';
 const ASSETS=['./','./index.html','./styles.css?v=0.4.0','./app.js?v=0.4.0','./manifest.webmanifest'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});
 self.addEventListener('activate',e=>{e.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()]))});

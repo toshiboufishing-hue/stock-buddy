@@ -89,7 +89,8 @@ document.querySelector('#saveHolding').onclick=()=>{
   const idx=document.querySelector('#holdingEditIndex').value;
   const prev=idx===''?{}:data.holdings[+idx];
   const value=+document.querySelector('#holdingValue').value;
-  const pnl=+document.querySelector('#holdingPnl').value;
+  const pnl=parseQuickNumber(document.querySelector('#holdingPnl').value);
+  if(pnl==null){alert('評価損益を数字で入力してください。マイナスは「-」でも「－」でもOKです。');return;}
   const costBasis=value-pnl;
   if(costBasis<0){alert('評価損益の値を確認してください。取得総額がマイナスになっています。');return;}
   const h={...prev,broker:document.querySelector('#broker').value,market:document.querySelector('#market').value,name:document.querySelector('#name').value.trim(),ticker:document.querySelector('#ticker').value.trim().toUpperCase(),qty:+document.querySelector('#qty').value,value,costBasis,note:document.querySelector('#holdingNote').value.trim(),updatedAt:new Date().toISOString()};
@@ -143,7 +144,8 @@ const paypayQuickRows=document.querySelector('#paypayQuickRows');
 const applyPaypayQuickBtn=document.querySelector('#applyPaypayQuickBtn');
 let paypayQuickData=[];
 function parseQuickNumber(v){
-  const cleaned=String(v??'').replace(/[円¥,$株\s]/g,'').replace(/,/g,'').replace(/[−–—]/g,'-');
+  const normalized=String(v??'').normalize('NFKC');
+  const cleaned=normalized.replace(/[円¥,$株\s]/g,'').replace(/,/g,'').replace(/[−–—]/g,'-');
   if(cleaned==='')return null;
   const n=Number(cleaned);return Number.isFinite(n)?n:null;
 }
