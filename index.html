@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.60</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.61</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -97,8 +97,9 @@
         <div id="snsImagePreview" class="sns-image-preview empty"><span>まだ画像が選ばれていません</span></div>
         <label class="sns-hint-label" for="snsHint">補足（任意）</label>
         <input id="snsHint" placeholder="例：Xで今朝見た投稿 / 低位株っぽい" />
-        <button id="shareSnsImageBtn" class="primary sns-share-btn" disabled>🤖 スクショをAIへ共有</button>
-        <div id="snsShareStatus" class="sns-share-status">スクショを選ぶと、Androidの共有画面からChatGPT等へ画像＋判定指示を送れます。</div>
+        <button id="shareSnsImageBtn" class="primary sns-share-btn" disabled>📋 判定指示をコピー</button>
+        <button id="openChatGptBtn" class="ghost-btn sns-share-btn" disabled>🤖 ChatGPTを開く</button>
+        <div id="snsShareStatus" class="sns-share-status">スクショを選ぶ → 判定指示をコピー → ChatGPTで同じ画像を添付、の順ならAndroidでも確実です。</div>
       </div>
 
       <div class="card input-card sns-text-card">
@@ -110,7 +111,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.60 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.61 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -184,6 +185,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.60.0"></script>
+  <script src="app.js?v=0.61.0"></script>
 </body>
 </html>
