@@ -1,4 +1,4 @@
-const APP_VERSION='0.63.0';
+const APP_VERSION='0.64.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -397,14 +397,13 @@ document.querySelector('#rerunResearchBtn').onclick=runStartupResearch;
 document.querySelector('#shareResearchBtn').onclick=shareResearchPrompt;
 
 
-// v0.61: Androidで確実に使えるSNSスクショ判定導線
-// Web Share APIの画像+文章同時共有には依存しない。
+// v0.64: Cloudflare Workers AI へSNSスクショを直接送信
+const SNS_AI_ENDPOINT='https://stock-buddy-ai.toshibou-fishing.workers.dev/vision-test';
 let snsImageFile=null;
 let snsImageUrl=null;
 const snsImageInput=document.querySelector('#snsImageInput');
 const selectSnsImageBtn=document.querySelector('#selectSnsImageBtn');
-const shareSnsImageBtn=document.querySelector('#shareSnsImageBtn');
-const openChatGptBtn=document.querySelector('#openChatGptBtn');
+const analyzeSnsImageBtn=document.querySelector('#analyzeSnsImageBtn');
 const snsImagePreview=document.querySelector('#snsImagePreview');
 const snsShareStatus=document.querySelector('#snsShareStatus');
 
@@ -414,45 +413,60 @@ function resetSnsPreview(){
   snsImageInput.value='';
   snsImagePreview.className='sns-image-preview empty';
   snsImagePreview.innerHTML='<span>まだ画像が選ばれていません</span>';
-  shareSnsImageBtn.disabled=true;
-  openChatGptBtn.disabled=true;
-  snsShareStatus.textContent='スクショを選ぶ → 判定指示をコピー → ChatGPTで同じ画像を添付、の順ならAndroidでも確実です。';
+  analyzeSnsImageBtn.disabled=true;
+  snsShareStatus.textContent='スクショを選ぶ → AI判定する、だけでOKです。';
 }
-function buildSnsImagePrompt(){
-  const hint=document.querySelector('#snsHint').value.trim();
-  const known=[...data.holdings.map(h=>`${h.market} ${h.ticker} ${h.name}`),...data.radar.map(r=>`${r.market} ${r.ticker} ${r.name}`)].slice(0,30).join(' / ');
-  return `【相棒STOCK SNSスクショ判定】\nこのあと添付する画像はSNS投稿のスクリーンショットです。画像内の文字・投稿内容・銘柄を読み取り、煽りに流されず裏取り前提で分析してください。\n\n必須:\n1. 推定銘柄名・証券コード（不明なら候補を最大3つ）\n2. 推定確度 0〜100% と、その根拠\n3. 投稿が主張する材料・カタリスト\n4. 「絶対上がる」「10倍」等の煽り/誘導表現と危険度\n5. 投稿日時や価格など、画像から読める鮮度情報\n6. 最新のIR・適時開示・会社発表・信頼できるニュースで裏取り。確認できない主張は未確認と明記\n7. 出来高/売買代金/直近値動きが確認できれば、資金流入が初動・拡散中・過熱のどこか判定\n8. 最終判定を 🚀買い候補 / 🔥監視強化 / ⚪待ち / 💰利確警戒 / 🚨危険 の5段階から1つ\n9. 「今すぐ見るべき次の条件」を1〜3個\n10. 回答の最後に必ず次の形式を1行ずつ付ける（不明は空欄）:\nSTOCK_NAME: 銘柄名\nTICKER: 証券コード\nMARKET: JP または US\nCONFIDENCE: 0〜100\nSIGNAL: buy / hold / wait / take / escape\nSUMMARY: 100文字以内の要約\n\n重要: 投稿者の断定を事実扱いしない。銘柄特定に自信がなければ無理に1社へ決めない。株価やニュースには取得時刻/確認時刻を付ける。\n${hint?`補足: ${hint}\n`:''}${known?`相棒STOCK登録銘柄（参考のみ）: ${known}\n`:''}`;
+function fileToDataUrl(file){
+  return new Promise((resolve,reject)=>{const r=new FileReader();r.onload=()=>resolve(r.result);r.onerror=()=>reject(r.error||new Error('画像読込失敗'));r.readAsDataURL(file);});
 }
-async function copySnsPrompt(){
-  const text=buildSnsImagePrompt();
-  try{
-    await navigator.clipboard.writeText(text);
-    snsShareStatus.innerHTML='✅ 判定指示をコピーしました。次に <b>ChatGPTを開く</b> → このスクショを添付 → 貼り付けして送信。';
-  }catch(err){
-    const ta=document.createElement('textarea');ta.value=text;ta.style.position='fixed';ta.style.opacity='0';document.body.appendChild(ta);ta.select();
-    const ok=document.execCommand('copy');ta.remove();
-    snsShareStatus.innerHTML=ok?'✅ 判定指示をコピーしました。次にChatGPTでスクショを添付してください。':'⚠️ コピーできませんでした。下の文字判定欄へ貼り付ける方法を使ってください。';
-  }
+function aiTextFromResponse(payload){
+  const r=payload?.result;
+  if(typeof r==='string')return r;
+  if(typeof r?.response==='string')return r.response;
+  if(typeof r?.content==='string')return r.content;
+  if(typeof r?.choices?.[0]?.message?.content==='string')return r.choices[0].message.content;
+  return '';
+}
+function saveDirectSnsResult(text){
+  const item=parseSnsAiResult(text);
+  data.snsHistory.unshift(item);data.snsHistory=data.snsHistory.slice(0,100);save();render();
+  const sig=signalMap[item.signal]||signalMap.wait;
+  document.querySelector('#snsResult').innerHTML=`<article class="card analysis-card"><h3>🤖 Workers AI判定</h3><div class="signal ${sig[2]}">${sig[0]} ${sig[1]}</div><p class="bullet"><b>${esc(item.name||'銘柄未特定')}</b>${item.ticker?`（${esc(item.ticker)}）`:''}・確度 ${item.confidence}%<br>${esc(item.summary||'要約なし')}</p><p class="sub">判定時刻 ${formatQuoteTime(item.createdAt)} / SNS画像の内容を解析。投稿内容そのものは事実確認済みとは限りません。</p></article>`;
+  snsShareStatus.innerHTML=item.ticker?'✅ AI判定完了。履歴へ保存しました。下の履歴からレーダーへ追加できます。':'🟡 AI判定完了。履歴へ保存しましたが、銘柄コードは特定できませんでした。';
 }
 selectSnsImageBtn.onclick=()=>snsImageInput.click();
 snsImageInput.onchange=()=>{
   const file=snsImageInput.files?.[0];
   if(!file)return resetSnsPreview();
   if(!file.type.startsWith('image/')){alert('画像ファイルを選んでください');return resetSnsPreview();}
-  if(file.size>15*1024*1024){alert('画像が大きすぎます。15MB以下のスクショを選んでください。');return resetSnsPreview();}
+  if(file.size>8*1024*1024){alert('画像が大きすぎます。8MB以下のスクショを選んでください。');return resetSnsPreview();}
   if(snsImageUrl)URL.revokeObjectURL(snsImageUrl);
   snsImageFile=file;snsImageUrl=URL.createObjectURL(file);
   snsImagePreview.className='sns-image-preview';
   snsImagePreview.innerHTML=`<img src="${snsImageUrl}" alt="選択したSNSスクリーンショット"><button type="button" id="clearSnsImageBtn" class="sns-clear-btn">×</button><div class="sns-image-meta">${Math.max(1,Math.round(file.size/1024))}KB</div>`;
   document.querySelector('#clearSnsImageBtn').onclick=resetSnsPreview;
-  shareSnsImageBtn.disabled=false;
-  openChatGptBtn.disabled=false;
-  snsShareStatus.innerHTML='✅ 画像OK。まず <b>判定指示をコピー</b> してください。画像は端末に残っているので、ChatGPT側で同じスクショを添付します。';
+  analyzeSnsImageBtn.disabled=false;
+  snsShareStatus.textContent='✅ 画像OK。「AI判定する」を押せば、そのままWorkers AIへ送ります。';
 };
-shareSnsImageBtn.onclick=copySnsPrompt;
-openChatGptBtn.onclick=()=>{
-  window.open('https://chatgpt.com/','_blank','noopener,noreferrer');
-  snsShareStatus.innerHTML='🤖 ChatGPTを開きました。<b>＋</b> からこのスクショを添付して、コピー済みの判定指示を貼り付けて送信してください。';
+analyzeSnsImageBtn.onclick=async()=>{
+  if(!snsImageFile)return;
+  const hint=document.querySelector('#snsHint').value.trim();
+  const known=[...data.holdings.map(h=>`${h.market} ${h.ticker} ${h.name}`),...data.radar.map(r=>`${r.market} ${r.ticker} ${r.name}`)].slice(0,30).join(' / ');
+  analyzeSnsImageBtn.disabled=true;analyzeSnsImageBtn.textContent='⏳ AI判定中…';
+  snsShareStatus.textContent='🟡 Workers AIがスクショを解析中です…';
+  try{
+    const image=await fileToDataUrl(snsImageFile);
+    const res=await fetch(SNS_AI_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,hint,known})});
+    const payload=await res.json().catch(()=>({}));
+    if(!res.ok||payload?.ok===false)throw new Error(payload?.error||`HTTP ${res.status}`);
+    const text=aiTextFromResponse(payload);
+    if(!text)throw new Error('AI回答を読み取れませんでした');
+    saveDirectSnsResult(text);
+  }catch(err){
+    snsShareStatus.textContent=`🔴 AI取得失敗：${String(err?.message||err)} / ${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`;
+  }finally{
+    analyzeSnsImageBtn.disabled=!snsImageFile;analyzeSnsImageBtn.textContent='🤖 AI判定する';
+  }
 };
 
 document.querySelector('#analyzeSnsBtn').onclick=()=>{const text=document.querySelector('#snsText').value.trim();if(!text){document.querySelector('#snsResult').innerHTML='';return}const kws=['共同','提携','量産','受注','承認','上方修正','黒字','AI','半導体','防衛','特許','TOB','増配','自社株買い'];const risk=['必ず','10倍','絶対','爆上げ','急騰確実','今すぐ','買わないと','億れる'];const material=kws.filter(k=>text.includes(k));const hype=risk.filter(k=>text.includes(k));const score=Math.max(20,Math.min(92,52+material.length*9-hype.length*13));const verdict=score>=75?'一次情報の裏取り優先':score>=55?'候補として監視':'煽り・根拠不足に注意';document.querySelector('#snsResult').innerHTML=`<article class="card analysis-card"><h3>🔎 簡易判定：${score}/100</h3><div class="signal ${score>=75?'buy':score<55?'escape':'hold'}">${verdict}</div><p class="bullet">材料語 ${material.length}件 / 煽り表現 ${hype.length}件。<br>これは文章だけの一次スクリーニングです。実際の売買判断ではIR・開示・株価・出来高で裏取りが必要です。</p></article>`;};
@@ -538,7 +552,7 @@ function parseSnsAiResult(text){
 function renderSnsHistory(){
   const list=document.querySelector('#snsHistory');if(!list)return;list.innerHTML='';
   const items=(data.snsHistory||[]).slice().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
-  if(!items.length){list.innerHTML='<article class="card empty-card"><strong>判定履歴はまだありません</strong>ChatGPTの判定結果を貼り付けて取り込むと、ここへ残ります。</article>';return;}
+  if(!items.length){list.innerHTML='<article class="card empty-card"><strong>判定履歴はまだありません</strong>SNSスクショをAI判定すると、ここへ自動保存されます。</article>';return;}
   items.forEach(item=>{
     const actualIndex=data.snsHistory.indexOf(item), sig=signalMap[item.signal]||signalMap.wait;
     const el=document.createElement('article');el.className='card sns-history-item';
@@ -554,12 +568,5 @@ function renderSnsHistory(){
   });
   document.querySelectorAll('.sns-delete').forEach(b=>b.onclick=()=>{if(confirm('このSNS判定履歴を削除しますか？')){data.snsHistory.splice(+b.dataset.index,1);save();render();}});
 }
-const importSnsAiBtn=document.querySelector('#importSnsAiBtn');
-if(importSnsAiBtn)importSnsAiBtn.onclick=()=>{
-  const box=document.querySelector('#snsAiResult'),status=document.querySelector('#snsImportStatus');
-  const text=box.value.trim();if(!text){status.textContent='⚠️ ChatGPTの判定結果を貼り付けてください。';return;}
-  const item=parseSnsAiResult(text);data.snsHistory.unshift(item);data.snsHistory=data.snsHistory.slice(0,100);save();render();box.value='';
-  status.innerHTML=item.ticker?`✅ ${esc(item.name||item.ticker)}（${esc(item.ticker)}）を保存しました。下の履歴からレーダー登録できます。`:'🟡 判定結果は保存しましたが、銘柄コードを自動抽出できませんでした。';
-};
 
 render();runStartupResearch();
