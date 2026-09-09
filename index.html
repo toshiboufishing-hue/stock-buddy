@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.62</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.63</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -120,7 +120,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.62 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.63 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -167,6 +167,8 @@
       <div id="productHint" class="product-hint">銘柄名から商品特性を自動判定します。</div>
       <label>保有数<input id="qty" type="number" step="0.0001" min="0" required /></label>
       <label>評価額<input id="holdingValue" type="number" step="0.01" min="0" required placeholder="例：124725" /></label>
+      <label>評価額の通貨<select id="valuationCurrency"><option value="JPY">円（JPY）</option><option value="USD">米ドル（USD）</option></select></label>
+      <p class="dialog-note">市場と評価額の通貨は別管理です。例：PayPay証券の米国ETFは「市場＝米国」「評価額＝円」にできます。</p>
       <label>評価損益<input id="holdingPnl" type="text" inputmode="decimal" required placeholder="例：-14860 / －14860" /></label>
       <label>メモ<input id="holdingNote" placeholder="例：決算前は注意" /></label>
       <div class="dialog-actions"><button type="button" id="cancelHolding">キャンセル</button><button type="button" id="saveHolding" class="primary">保存</button></div>
@@ -194,6 +196,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.62.0"></script>
+  <script src="app.js?v=0.63.0"></script>
 </body>
 </html>
