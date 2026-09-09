@@ -1,9 +1,10 @@
-const APP_VERSION='0.61.0';
+const APP_VERSION='0.62.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
 let data=loadData();
 if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
+if(!Array.isArray(data.snsHistory))data.snsHistory=[];
 (data.holdings||[]).forEach(h=>{if(!Array.isArray(h.history))h.history=[];});
 
 function loadData(){
@@ -196,6 +197,7 @@ function portfolioSnapshot(){
 }
 function appendPortfolioHistory(){
   if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
+if(!Array.isArray(data.snsHistory))data.snsHistory=[];
   const point=portfolioSnapshot(),last=data.portfolioHistory[data.portfolioHistory.length-1];
   if(!last || +last.jp!==+point.jp || +last.us!==+point.us)data.portfolioHistory.push(point);
   if(data.portfolioHistory.length>500)data.portfolioHistory=data.portfolioHistory.slice(-500);
@@ -204,6 +206,7 @@ function ensureInitialHistory(){
   let changed=false;
   data.holdings.forEach(h=>{if(!Array.isArray(h.history))h.history=[];if(!h.history.length){h.history.push(historyPoint(holdingValue(h),h.market||'JP'));changed=true;}});
   if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
+if(!Array.isArray(data.snsHistory))data.snsHistory=[];
   if(!data.portfolioHistory.length && data.holdings.length){data.portfolioHistory.push(portfolioSnapshot());changed=true;}
   if(changed)save();
 }
@@ -261,7 +264,7 @@ function signalReason(h){
   if(pct>=8)return'含み益圏。材料が崩れていないか確認';
   return'損益だけでは強い判断材料なし。最新情報待ち';
 }
-function render(){renderHoldings();renderRadar();renderTotals();renderPortfolioHistory();}
+function render(){renderHoldings();renderRadar();renderTotals();renderPortfolioHistory();renderSnsHistory();}
 function holdingPriority(h){
   // 将来の外部AI結果が入ったら最優先で使用。現状はローカル損益判定を安全な暫定値として使う。
   if(h.aiImportant===true)return 1000+(Number(h.aiPriority)||0);
@@ -413,7 +416,7 @@ function resetSnsPreview(){
 function buildSnsImagePrompt(){
   const hint=document.querySelector('#snsHint').value.trim();
   const known=[...data.holdings.map(h=>`${h.market} ${h.ticker} ${h.name}`),...data.radar.map(r=>`${r.market} ${r.ticker} ${r.name}`)].slice(0,30).join(' / ');
-  return `【相棒STOCK SNSスクショ判定】\nこのあと添付する画像はSNS投稿のスクリーンショットです。画像内の文字・投稿内容・銘柄を読み取り、煽りに流されず裏取り前提で分析してください。\n\n必須:\n1. 推定銘柄名・証券コード（不明なら候補を最大3つ）\n2. 推定確度 0〜100% と、その根拠\n3. 投稿が主張する材料・カタリスト\n4. 「絶対上がる」「10倍」等の煽り/誘導表現と危険度\n5. 投稿日時や価格など、画像から読める鮮度情報\n6. 最新のIR・適時開示・会社発表・信頼できるニュースで裏取り。確認できない主張は未確認と明記\n7. 出来高/売買代金/直近値動きが確認できれば、資金流入が初動・拡散中・過熱のどこか判定\n8. 最終判定を 🚀買い候補 / 🔥監視強化 / ⚪待ち / 💰利確警戒 / 🚨危険 の5段階から1つ\n9. 「今すぐ見るべき次の条件」を1〜3個\n\n重要: 投稿者の断定を事実扱いしない。銘柄特定に自信がなければ無理に1社へ決めない。株価やニュースには取得時刻/確認時刻を付ける。\n${hint?`補足: ${hint}\n`:''}${known?`相棒STOCK登録銘柄（参考のみ）: ${known}\n`:''}`;
+  return `【相棒STOCK SNSスクショ判定】\nこのあと添付する画像はSNS投稿のスクリーンショットです。画像内の文字・投稿内容・銘柄を読み取り、煽りに流されず裏取り前提で分析してください。\n\n必須:\n1. 推定銘柄名・証券コード（不明なら候補を最大3つ）\n2. 推定確度 0〜100% と、その根拠\n3. 投稿が主張する材料・カタリスト\n4. 「絶対上がる」「10倍」等の煽り/誘導表現と危険度\n5. 投稿日時や価格など、画像から読める鮮度情報\n6. 最新のIR・適時開示・会社発表・信頼できるニュースで裏取り。確認できない主張は未確認と明記\n7. 出来高/売買代金/直近値動きが確認できれば、資金流入が初動・拡散中・過熱のどこか判定\n8. 最終判定を 🚀買い候補 / 🔥監視強化 / ⚪待ち / 💰利確警戒 / 🚨危険 の5段階から1つ\n9. 「今すぐ見るべき次の条件」を1〜3個\n10. 回答の最後に必ず次の形式を1行ずつ付ける（不明は空欄）:\nSTOCK_NAME: 銘柄名\nTICKER: 証券コード\nMARKET: JP または US\nCONFIDENCE: 0〜100\nSIGNAL: buy / hold / wait / take / escape\nSUMMARY: 100文字以内の要約\n\n重要: 投稿者の断定を事実扱いしない。銘柄特定に自信がなければ無理に1社へ決めない。株価やニュースには取得時刻/確認時刻を付ける。\n${hint?`補足: ${hint}\n`:''}${known?`相棒STOCK登録銘柄（参考のみ）: ${known}\n`:''}`;
 }
 async function copySnsPrompt(){
   const text=buildSnsImagePrompt();
@@ -510,4 +513,48 @@ document.querySelector('#resetBtn').onclick=()=>{if(confirm('保有株・監視�
 ensureInitialHistory();
 
 if('serviceWorker'in navigator){window.addEventListener('load',()=>navigator.serviceWorker.register('./sw.js').catch(()=>{}));}
+
+
+// v0.62: AI判定結果の取り込み・履歴・レーダー連携
+function fieldFromAi(text,key){
+  const m=String(text||'').match(new RegExp('^'+key+'\\s*[:：]\\s*(.*)$','mi'));
+  return m?m[1].trim():'';
+}
+function parseSnsAiResult(text){
+  const name=fieldFromAi(text,'STOCK_NAME');
+  const ticker=fieldFromAi(text,'TICKER').toUpperCase().replace(/[^0-9A-Z.\-]/g,'');
+  const market=(fieldFromAi(text,'MARKET').toUpperCase()==='US'?'US':'JP');
+  const confidence=Math.max(0,Math.min(100,parseInt(fieldFromAi(text,'CONFIDENCE'),10)||0));
+  const rawSignal=fieldFromAi(text,'SIGNAL').toLowerCase();
+  const signal=['buy','hold','wait','take','escape'].includes(rawSignal)?rawSignal:'wait';
+  const summary=fieldFromAi(text,'SUMMARY')||String(text).replace(/\s+/g,' ').trim().slice(0,180);
+  return{name,ticker,market,confidence,signal,summary,raw:String(text).trim(),createdAt:new Date().toISOString()};
+}
+function renderSnsHistory(){
+  const list=document.querySelector('#snsHistory');if(!list)return;list.innerHTML='';
+  const items=(data.snsHistory||[]).slice().sort((a,b)=>String(b.createdAt).localeCompare(String(a.createdAt)));
+  if(!items.length){list.innerHTML='<article class="card empty-card"><strong>判定履歴はまだありません</strong>ChatGPTの判定結果を貼り付けて取り込むと、ここへ残ります。</article>';return;}
+  items.forEach(item=>{
+    const actualIndex=data.snsHistory.indexOf(item), sig=signalMap[item.signal]||signalMap.wait;
+    const el=document.createElement('article');el.className='card sns-history-item';
+    el.innerHTML=`<div class="row"><div><div class="name">${esc(item.name||'銘柄未特定')}</div><div class="sub">${esc(item.market||'JP')}・${esc(item.ticker||'コード不明')}・確度 ${Number(item.confidence||0)}%</div></div><div class="sns-history-time">${formatQuoteTime(item.createdAt)}</div></div><div class="signal ${sig[2]}">${sig[0]} ${sig[1]}</div><p class="bullet">${esc(item.summary||'要約なし')}</p><div class="card-actions">${item.ticker?`<button class="mini-btn sns-to-radar" data-index="${actualIndex}">🔎 レーダーへ</button>`:''}<button class="mini-btn delete sns-delete" data-index="${actualIndex}">削除</button></div>`;
+    list.appendChild(el);
+  });
+  document.querySelectorAll('.sns-to-radar').forEach(b=>b.onclick=()=>{
+    const x=data.snsHistory[+b.dataset.index];if(!x||!x.ticker)return;
+    const exists=data.radar.some(r=>r.market===x.market&&String(r.ticker).toUpperCase()===x.ticker);
+    if(exists){alert('この銘柄はすでにレーダー登録済みです。');return;}
+    data.radar.push({market:x.market,name:x.name||x.ticker,ticker:x.ticker,price:0,reason:`SNS AI判定：${x.summary}`,addedAt:new Date().toISOString(),snsSignal:x.signal,snsConfidence:x.confidence});
+    save();render();alert('レーダーへ追加しました。');
+  });
+  document.querySelectorAll('.sns-delete').forEach(b=>b.onclick=()=>{if(confirm('このSNS判定履歴を削除しますか？')){data.snsHistory.splice(+b.dataset.index,1);save();render();}});
+}
+const importSnsAiBtn=document.querySelector('#importSnsAiBtn');
+if(importSnsAiBtn)importSnsAiBtn.onclick=()=>{
+  const box=document.querySelector('#snsAiResult'),status=document.querySelector('#snsImportStatus');
+  const text=box.value.trim();if(!text){status.textContent='⚠️ ChatGPTの判定結果を貼り付けてください。';return;}
+  const item=parseSnsAiResult(text);data.snsHistory.unshift(item);data.snsHistory=data.snsHistory.slice(0,100);save();render();box.value='';
+  status.innerHTML=item.ticker?`✅ ${esc(item.name||item.ticker)}（${esc(item.ticker)}）を保存しました。下の履歴からレーダー登録できます。`:'🟡 判定結果は保存しましたが、銘柄コードを自動抽出できませんでした。';
+};
+
 render();runStartupResearch();

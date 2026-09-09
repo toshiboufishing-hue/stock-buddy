@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.61</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.62</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -108,10 +108,19 @@
         <button id="analyzeSnsBtn" class="primary">文章を簡易判定</button>
       </div>
       <div id="snsResult"></div>
+
+      <div class="card input-card sns-import-card">
+        <label for="snsAiResult">🤖 AI判定結果を相棒STOCKへ戻す</label>
+        <textarea id="snsAiResult" rows="8" placeholder="ChatGPTの判定結果をここへ貼り付け"></textarea>
+        <button id="importSnsAiBtn" class="primary">判定結果を取り込む</button>
+        <div id="snsImportStatus" class="sns-share-status">取り込むとSNS判定履歴へ保存。銘柄コードが取れた場合はレーダーへ追加できます。</div>
+      </div>
+      <div class="section-head sns-history-head"><div><h2>判定履歴</h2><p>AI判定を端末内に保存</p></div></div>
+      <div id="snsHistory" class="stack"></div>
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.61 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.62 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -185,6 +194,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.61.0"></script>
+  <script src="app.js?v=0.62.0"></script>
 </body>
 </html>
