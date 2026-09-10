@@ -1,4 +1,4 @@
-const APP_VERSION='0.64.0';
+const APP_VERSION='0.66.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -398,7 +398,7 @@ document.querySelector('#shareResearchBtn').onclick=shareResearchPrompt;
 
 
 // v0.64: Cloudflare Workers AI へSNSスクショを直接送信
-const SNS_AI_ENDPOINT='https://stock-buddy-ai.toshibou-fishing.workers.dev/vision-test';
+const SNS_AI_ENDPOINT='https://stock-buddy-ai.toshibou-fishing.workers.dev/sns-analyze';
 let snsImageFile=null;
 let snsImageUrl=null;
 const snsImageInput=document.querySelector('#snsImageInput');
