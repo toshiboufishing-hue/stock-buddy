@@ -1,4 +1,4 @@
-const APP_VERSION='0.68.0';
+const APP_VERSION='0.69.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -303,7 +303,7 @@ function renderHoldings(){
     const pinfo=productInfo(h);
     const reason=signalReason(h);
     const qm=quoteMeta(h);
-    el.innerHTML=`${important?'<div class="priority-banner">🚨 最重要・強制トップ</div>':''}<div class="compact-top"><div class="holding-main"><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}${Number.isFinite(+h.quotePrice)?`・現在値 ${currencyMoney(+h.quotePrice,h.quoteCurrency||marketQuoteCurrency(h.market))}`:''}</div></div><div class="holding-money"><div class="price">${currencyMoney(value,defaultValuationCurrency(h))}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${currencyMoney(pnl,defaultValuationCurrency(h))} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="quote-freshness ${qm.level}"><span class="fresh-dot"></span><b>${qm.label}</b><span>${formatQuoteTime(qm.at)}</span><small>${quoteSourceLabel(qm.source)}</small></div><div class="compact-status"><span class="direction ${dir[2]}"><b>${dir[0]}</b> ${dir[1]}</span><span class="signal ${s[2]}">${s[0]} ${s[1]}</span></div><div class="ai-comment ${important?'critical':''}"><span class="ai-label">AIコメント</span><strong>${esc(reason)}</strong></div><div class="compact-foot"><div class="product-tags">${h.accountCourse==='challenge'?'<span class="product-tag special">PayPayチャレンジ</span>':''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div></div>`;
+    el.innerHTML=`${important?'<div class="priority-banner">🚨 最重要・強制トップ</div>':''}<div class="compact-top"><div class="holding-main"><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}${Number.isFinite(+h.quotePrice)?`・現在値 ${currencyMoney(+h.quotePrice,h.quoteCurrency||marketQuoteCurrency(h.market))}`:''}</div></div><div class="holding-money"><div class="price">${currencyMoney(value,defaultValuationCurrency(h))}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${currencyMoney(pnl,defaultValuationCurrency(h))} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="quote-freshness ${qm.level}"><span class="fresh-dot"></span><b>${qm.label}</b><span>${formatQuoteTime(qm.at)}</span><small>${quoteSourceLabel(qm.source)}</small></div><div class="compact-status"><span class="direction ${dir[2]}"><b>${dir[0]}</b> ${dir[1]}</span><span class="signal ${s[2]}">${s[0]} ${s[1]}</span></div><div class="ai-comment ${important?'critical':''}"><span class="ai-label">AIコメント</span><strong>${esc(reason)}</strong></div><div class="compact-foot"><div class="product-tags">${h.accountCourse==='challenge'?`<span class="product-tag special">${esc(h.accountCourseLabel||'PayPayチャレンジ')}</span>`:''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div></div>`;
     list.appendChild(el);
   });
   document.querySelectorAll('.history-holding').forEach(b=>b.onclick=e=>{e.stopPropagation();openHoldingHistory(+b.dataset.index)});
@@ -420,10 +420,41 @@ function resetMoomooPreview(){
   moomooImportStatus.textContent='スクショを選ぶ → 株価をAI読込、だけでOKです。';
 }
 function normalizeTicker(t=''){return String(t).trim().toUpperCase().replace(/[^0-9A-Z.\-]/g,'');}
-const KNOWN_LEVERAGED_TICKERS={
-  SPXL:{leverage:3,direction:'bull',label:'S&P500 ブル3倍'},
-  AMZU:{leverage:2,direction:'bull',label:'Amazon ブル2倍'}
+const PAYPAY_COURSE_TICKERS={
+  SPXL:{leverage:3,direction:'bull',course:'challenge',courseLabel:'チャレンジコース',underlying:'S&P500'},
+  SPXS:{leverage:3,direction:'bear',course:'challenge',courseLabel:'逆チャレンジコース',underlying:'S&P500'},
+  TQQQ:{leverage:3,direction:'bull',course:'challenge',courseLabel:'テクノロジーチャレンジコース',underlying:'NASDAQ100'},
+  SQQQ:{leverage:3,direction:'bear',course:'challenge',courseLabel:'テクノロジー逆チャレンジコース',underlying:'NASDAQ100'},
+  SOXL:{leverage:3,direction:'bull',course:'challenge',courseLabel:'半導体チャレンジコース',underlying:'半導体指数'},
+  SOXS:{leverage:3,direction:'bear',course:'challenge',courseLabel:'半導体逆チャレンジコース',underlying:'半導体指数'},
+  AAPU:{leverage:2,direction:'bull',course:'challenge',courseLabel:'Appleチャレンジコース',underlying:'Apple'},
+  AAPD:{leverage:1,direction:'bear',course:'challenge',courseLabel:'Apple逆連動コース',underlying:'Apple'},
+  AMZU:{leverage:2,direction:'bull',course:'challenge',courseLabel:'Amazonチャレンジコース',underlying:'Amazon'},
+  AMZD:{leverage:1,direction:'bear',course:'challenge',courseLabel:'Amazon逆連動コース',underlying:'Amazon'},
+  GGLL:{leverage:2,direction:'bull',course:'challenge',courseLabel:'Googleチャレンジコース',underlying:'Alphabet'},
+  GGLS:{leverage:1,direction:'bear',course:'challenge',courseLabel:'Google逆連動コース',underlying:'Alphabet'},
+  MSFU:{leverage:2,direction:'bull',course:'challenge',courseLabel:'マイクロソフトチャレンジコース',underlying:'Microsoft'},
+  MSFD:{leverage:1,direction:'bear',course:'challenge',courseLabel:'マイクロソフト逆連動コース',underlying:'Microsoft'},
+  NVDU:{leverage:2,direction:'bull',course:'challenge',courseLabel:'エヌビディアチャレンジコース',underlying:'NVIDIA'},
+  NVDD:{leverage:1,direction:'bear',course:'challenge',courseLabel:'エヌビディア逆連動コース',underlying:'NVIDIA'},
+  TSLL:{leverage:2,direction:'bull',course:'challenge',courseLabel:'テスラチャレンジコース',underlying:'Tesla'},
+  TSLS:{leverage:1,direction:'bear',course:'challenge',courseLabel:'テスラ逆連動コース',underlying:'Tesla'}
 };
+const KNOWN_LEVERAGED_TICKERS=PAYPAY_COURSE_TICKERS;
+function paypayCourseInfo(ticker=''){return PAYPAY_COURSE_TICKERS[normalizeTicker(ticker)]||null;}
+function isUsStyleTicker(t=''){const x=normalizeTicker(t);return /^[A-Z][A-Z0-9.\-]{0,9}$/.test(x)&&!/^\d{4}$/.test(x);}
+function holdingMatchForQuote(q){
+  const exact=data.holdings.find(x=>normalizeTicker(x.ticker)===q.ticker && (x.market||'JP')===q.market);
+  if(exact)return exact;
+  // 旧データでPayPay米国ETFが「日本」扱いになっていた場合も、ティッカー一致を優先して救済する。
+  if(q.market==='US'&&isUsStyleTicker(q.ticker)){
+    return data.holdings.find(x=>normalizeTicker(x.ticker)===q.ticker && (x.broker==='PayPay証券'||isUsStyleTicker(x.ticker)));
+  }
+  return null;
+}
+function radarMatchForQuote(q){
+  return data.radar.find(x=>normalizeTicker(x.ticker)===q.ticker && ((x.market||'JP')===q.market || (q.market==='US'&&isUsStyleTicker(q.ticker))));
+}
 function leverageFromQuote(q={}){
   const ticker=normalizeTicker(q.ticker);
   const known=KNOWN_LEVERAGED_TICKERS[ticker];
@@ -465,17 +496,31 @@ function applyMoomooQuotes(rawQuotes,capturedAt){
   const at=capturedAt||isoNow();
   quotes.forEach(q=>{
     let matched=false;
-    const h=data.holdings.find(x=>normalizeTicker(x.ticker)===q.ticker && (x.market||'JP')===q.market);
+    const h=holdingMatchForQuote(q);
     if(h){
+      // moomooの米国ティッカーで一致した旧PayPayデータは市場区分だけ自動補正する。
+      if(q.market==='US'&&isUsStyleTicker(q.ticker))h.market='US';
       h.quotePrice=q.price;h.quoteCurrency=q.currency||marketQuoteCurrency(q.market);
       h.quoteUpdatedAt=at;h.quoteSource='moomoo';h.quoteStatus='ok';h.updatedAt=at;
-      if(q.leverage>1){h.leverageFactor=q.leverage;if((h.productType||'auto')==='auto')h.productType='leveraged';}
+      const pc=paypayCourseInfo(q.ticker);
+      if(pc){
+        h.leverageFactor=pc.leverage;
+        h.productType=pc.direction==='bear'?'inverse':(pc.leverage>1?'leveraged':'inverse');
+        if(h.broker==='PayPay証券'){
+          h.accountCourse='challenge';
+          h.accountCourseLabel=pc.courseLabel;
+          h.underlyingLabel=pc.underlying;
+        }
+      }else if(q.leverage>1){
+        h.leverageFactor=q.leverage;
+        if((h.productType||'auto')==='auto')h.productType='leveraged';
+      }
       if(defaultValuationCurrency(h)===h.quoteCurrency)h.value=q.price*(+h.qty||0);
       appendHoldingHistory(h);holdingsUpdated++;matched=true;
     }
-    const r=data.radar.find(x=>normalizeTicker(x.ticker)===q.ticker && (x.market||'JP')===q.market);
+    const r=radarMatchForQuote(q);
     if(r){r.price=q.price;r.updatedAt=at;radarUpdated++;matched=true;}
-    const baseMove=(q.leverage>1&&q.changePercent!=null)?q.changePercent/q.leverage:null;
+    const baseMove=(q.changePercent!=null&&(q.leverage>1||q.direction==='bear'))?(q.changePercent/q.leverage)*(q.direction==='bear'?-1:1):null;
     results.push({...q,matched,baseMove});
   });
   if(holdingsUpdated)appendPortfolioHistory();
@@ -488,10 +533,12 @@ function renderMoomooResult(applied){
   if(!moomooImportResult)return;
   if(!applied.quotes.length){moomooImportResult.innerHTML='<div class="candidate candidate-error">銘柄と現在値を読み取れませんでした。</div>';return;}
   moomooImportResult.innerHTML=applied.quotes.map(q=>{
-    const lev=q.leverage>1?`<span class="product-tag special">ブル${q.leverage}倍</span>`:'';
+    const pc=paypayCourseInfo(q.ticker);
+    const lev=q.leverage>1?`<span class="product-tag special">${q.direction==='bear'?'ベア':'ブル'}${q.leverage}倍</span>`:'';
+    const course=pc?`<span class="product-tag special">PayPay ${esc(pc.courseLabel)}</span>`:'';
     const move=q.changePercent==null?'':` / 騰落 ${q.changePercent>=0?'+':''}${q.changePercent.toFixed(2)}%`;
-    const base=q.baseMove==null?'':`<br><small>日次${q.leverage}倍商品の目安：原指数の値動き換算 約${q.baseMove>=0?'+':''}${q.baseMove.toFixed(2)}%（単純換算・乖離あり）</small>`;
-    return `<article class="card"><div class="row"><div><strong>${esc(q.name||q.ticker)}</strong><div class="sub">${esc(q.market)}・${esc(q.ticker)} ${lev}</div></div><div class="price">${currencyMoney(q.price,q.currency)}</div></div><p class="bullet">${q.matched?'✅ 登録銘柄へ反映':'⚪ 未登録銘柄'}${move}${base}</p></article>`;
+    const base=q.baseMove==null?'':`<br><small>日次${q.leverage}倍商品の目安：${esc(pc?.underlying||'原指数')}の値動き換算 約${q.baseMove>=0?'+':''}${q.baseMove.toFixed(2)}%（単純換算・乖離あり）</small>`;
+    return `<article class="card"><div class="row"><div><strong>${esc(q.name||q.ticker)}</strong><div class="sub">${esc(q.market)}・${esc(q.ticker)} ${lev} ${course}</div></div><div class="price">${currencyMoney(q.price,q.currency)}</div></div><p class="bullet">${q.matched?'✅ 登録銘柄へ反映':'⚪ 未登録銘柄'}${move}${base}</p></article>`;
   }).join('');
 }
 if(selectMoomooImageBtn)selectMoomooImageBtn.onclick=()=>moomooImageInput.click();
