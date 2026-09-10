@@ -457,10 +457,16 @@ analyzeSnsImageBtn.onclick=async()=>{
   try{
     const image=await fileToDataUrl(snsImageFile);
     const res=await fetch(SNS_AI_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,hint,known})});
-    const payload=await res.json().catch(()=>({}));
-    if(!res.ok||payload?.ok===false)throw new Error(payload?.error||`HTTP ${res.status}`);
+    const raw=await res.text();
+    let payload=null;
+    try{payload=raw?JSON.parse(raw):null;}catch(_){payload=null;}
+    if(!res.ok||payload?.ok===false){
+      const detail=payload?.error||raw||`HTTP ${res.status}`;
+      throw new Error(`Worker ${res.status}: ${String(detail).slice(0,1200)}`);
+    }
+    if(!payload)throw new Error(`Worker ${res.status}: JSONではない応答: ${String(raw).slice(0,1200)}`);
     const text=aiTextFromResponse(payload);
-    if(!text)throw new Error('AI回答を読み取れませんでした');
+    if(!text)throw new Error(`AI応答形式を確認できません: ${JSON.stringify(payload).slice(0,1200)}`);
     saveDirectSnsResult(text);
   }catch(err){
     snsShareStatus.textContent=`🔴 AI取得失敗：${String(err?.message||err)} / ${new Date().toLocaleTimeString('ja-JP',{hour:'2-digit',minute:'2-digit'})}`;
