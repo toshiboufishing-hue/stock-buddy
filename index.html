@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.66</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.67</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -68,8 +68,20 @@
 
     <section id="portfolio" class="panel active">
       <div class="section-head">
-        <div><h2>保有株</h2><p>当面は手入力。起動時に調査対象へ自動登録。</p></div>
+        <div><h2>保有株</h2><p>手入力＋moomooスクショAI読込。起動時に調査対象へ自動登録。</p></div>
         <div class="section-actions"><button id="paypayQuickBtn" class="small-btn camera-btn">⚡ PayPay簡単更新</button><button id="addHoldingBtn" class="small-btn">＋追加</button></div>
+      </div>
+      <div class="card sns-shot-card" id="moomooQuoteCard">
+        <div class="sns-shot-head">
+          <div><strong>📸 moomoo株価AI読込</strong><span>moomooの保有株・ウォッチ画面をスクショ → AIが現在値を読み取り、登録銘柄へ反映します。</span></div>
+          <span class="tag ok">AI</span>
+        </div>
+        <input id="moomooImageInput" type="file" accept="image/*" hidden />
+        <button id="selectMoomooImageBtn" class="sns-pick-btn">＋ moomooスクショを選ぶ</button>
+        <div id="moomooImagePreview" class="sns-image-preview empty"><span>まだ画像が選ばれていません</span></div>
+        <button id="analyzeMoomooImageBtn" class="primary sns-share-btn" disabled>📈 株価をAI読込</button>
+        <div id="moomooImportStatus" class="sns-share-status">スクショを選ぶ → 株価をAI読込、だけでOKです。</div>
+        <div id="moomooImportResult"></div>
       </div>
       <div id="holdingsList" class="stack"></div>
     </section>
@@ -113,7 +125,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.66 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.67 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -123,7 +135,7 @@
         <div class="setting-row"><span>SNSスクショ判定</span><span class="tag ok">Workers AI直結</span></div>
         <div class="setting-row"><span>外部ニュース/IR自動取得</span><span class="tag warn">未接続</span></div>
         <div class="setting-row"><span>本物のAI API分析</span><span class="tag warn">未接続</span></div>
-        <div class="setting-row"><span>moomoo自動同期</span><span class="tag warn">利益確認後</span></div>
+        <div class="setting-row"><span>moomoo株価スクショ読込</span><span class="tag ok">Workers AI</span></div><div class="setting-row"><span>moomoo API自動同期</span><span class="tag warn">将来対応</span></div>
         <div class="setting-row"><span>ローカル保存</span><span class="tag ok">有効</span></div>
       </div>
       <p class="notice">※ PayPay証券は、初回だけ通常登録。その後は「評価額」と「評価損益」だけで保有情報を更新できます。GitHub Pagesだけでは秘密鍵を安全に保持できないため、AI APIや証券APIはまだ直接接続していません。</p>
@@ -189,6 +201,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.66.0"></script>
+  <script src="app.js?v=0.67.0"></script>
 </body>
 </html>

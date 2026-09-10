@@ -1,10 +1,11 @@
-const APP_VERSION='0.66.0';
+const APP_VERSION='0.67.0';
 const STORAGE_KEY='stockBuddyDataV02';
-const seed={holdings:[],radar:[],portfolioHistory:[],research:{lastRun:null,lastSummary:null}};
+const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
 let data=loadData();
 if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
 if(!Array.isArray(data.snsHistory))data.snsHistory=[];
+if(!Array.isArray(data.moomooImports))data.moomooImports=[];
 (data.holdings||[]).forEach(h=>{if(!Array.isArray(h.history))h.history=[];});
 
 function loadData(){
@@ -39,6 +40,7 @@ function detectLeverage(name=''){
 }
 function inferProductType(h={}){
   if(h.productType && h.productType!=='auto')return h.productType;
+  if(Number(h.leverageFactor)>1)return'leveraged';
   const n=String(h.name||'').normalize('NFKC').toLowerCase();
   if(/インバース|ベア|bear|inverse/.test(n))return'inverse';
   if(/direxion|ブル[23]?倍|[23]倍etf|leveraged|レバレッジ/.test(n))return'leveraged';
@@ -46,7 +48,7 @@ function inferProductType(h={}){
   return'stock';
 }
 function productInfo(h={}){
-  const type=inferProductType(h),lev=detectLeverage(h.name||'');
+  const type=inferProductType(h),lev=(Number(h.leverageFactor)>1?Number(h.leverageFactor):detectLeverage(h.name||''));
   let label=productTypeMap[type]||'その他';
   if(type==='leveraged'&&lev)label+=`・${lev}倍`;
   let risk='通常の個別株として管理';
@@ -301,7 +303,7 @@ function renderHoldings(){
     const pinfo=productInfo(h);
     const reason=signalReason(h);
     const qm=quoteMeta(h);
-    el.innerHTML=`${important?'<div class="priority-banner">🚨 最重要・強制トップ</div>':''}<div class="compact-top"><div class="holding-main"><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}</div></div><div class="holding-money"><div class="price">${currencyMoney(value,defaultValuationCurrency(h))}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${currencyMoney(pnl,defaultValuationCurrency(h))} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="quote-freshness ${qm.level}"><span class="fresh-dot"></span><b>${qm.label}</b><span>${formatQuoteTime(qm.at)}</span><small>${quoteSourceLabel(qm.source)}</small></div><div class="compact-status"><span class="direction ${dir[2]}"><b>${dir[0]}</b> ${dir[1]}</span><span class="signal ${s[2]}">${s[0]} ${s[1]}</span></div><div class="ai-comment ${important?'critical':''}"><span class="ai-label">AIコメント</span><strong>${esc(reason)}</strong></div><div class="compact-foot"><div class="product-tags">${h.accountCourse==='challenge'?'<span class="product-tag special">PayPayチャレンジ</span>':''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div></div>`;
+    el.innerHTML=`${important?'<div class="priority-banner">🚨 最重要・強制トップ</div>':''}<div class="compact-top"><div class="holding-main"><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}${Number.isFinite(+h.quotePrice)?`・現在値 ${currencyMoney(+h.quotePrice,h.quoteCurrency||marketQuoteCurrency(h.market))}`:''}</div></div><div class="holding-money"><div class="price">${currencyMoney(value,defaultValuationCurrency(h))}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${currencyMoney(pnl,defaultValuationCurrency(h))} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="quote-freshness ${qm.level}"><span class="fresh-dot"></span><b>${qm.label}</b><span>${formatQuoteTime(qm.at)}</span><small>${quoteSourceLabel(qm.source)}</small></div><div class="compact-status"><span class="direction ${dir[2]}"><b>${dir[0]}</b> ${dir[1]}</span><span class="signal ${s[2]}">${s[0]} ${s[1]}</span></div><div class="ai-comment ${important?'critical':''}"><span class="ai-label">AIコメント</span><strong>${esc(reason)}</strong></div><div class="compact-foot"><div class="product-tags">${h.accountCourse==='challenge'?'<span class="product-tag special">PayPayチャレンジ</span>':''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div></div>`;
     list.appendChild(el);
   });
   document.querySelectorAll('.history-holding').forEach(b=>b.onclick=e=>{e.stopPropagation();openHoldingHistory(+b.dataset.index)});
@@ -396,6 +398,108 @@ function runStartupResearch(){
 document.querySelector('#rerunResearchBtn').onclick=runStartupResearch;
 document.querySelector('#shareResearchBtn').onclick=shareResearchPrompt;
 
+
+// v0.67: moomooスクショから株価をAI読込
+const MOOMOO_AI_ENDPOINT='https://stock-buddy-ai.toshibou-fishing.workers.dev/moomoo-analyze';
+let moomooImageFile=null;
+let moomooImageUrl=null;
+const moomooImageInput=document.querySelector('#moomooImageInput');
+const selectMoomooImageBtn=document.querySelector('#selectMoomooImageBtn');
+const analyzeMoomooImageBtn=document.querySelector('#analyzeMoomooImageBtn');
+const moomooImagePreview=document.querySelector('#moomooImagePreview');
+const moomooImportStatus=document.querySelector('#moomooImportStatus');
+const moomooImportResult=document.querySelector('#moomooImportResult');
+
+function resetMoomooPreview(){
+  if(moomooImageUrl){URL.revokeObjectURL(moomooImageUrl);moomooImageUrl=null;}
+  moomooImageFile=null;
+  moomooImageInput.value='';
+  moomooImagePreview.className='sns-image-preview empty';
+  moomooImagePreview.innerHTML='<span>まだ画像が選ばれていません</span>';
+  analyzeMoomooImageBtn.disabled=true;
+  moomooImportStatus.textContent='スクショを選ぶ → 株価をAI読込、だけでOKです。';
+}
+function normalizeTicker(t=''){return String(t).trim().toUpperCase().replace(/[^0-9A-Z.\-]/g,'');}
+function normalizeMoomooQuote(q={}){
+  const market=String(q.market||'').toUpperCase()==='JP'?'JP':'US';
+  const price=Number(q.price);
+  const leverage=Math.max(1,Math.min(5,Number(q.leverage)||1));
+  const changePercent=Number(q.changePercent);
+  return {
+    ticker:normalizeTicker(q.ticker),name:String(q.name||'').trim(),market,
+    price:Number.isFinite(price)?price:null,currency:q.currency||(market==='JP'?'JPY':'USD'),
+    changePercent:Number.isFinite(changePercent)?changePercent:null,
+    leverage, direction:String(q.direction||'normal').toLowerCase(),
+    productType:String(q.productType||'').toLowerCase(),confidence:Math.max(0,Math.min(100,Number(q.confidence)||0))
+  };
+}
+function applyMoomooQuotes(rawQuotes,capturedAt){
+  const quotes=(Array.isArray(rawQuotes)?rawQuotes:[]).map(normalizeMoomooQuote).filter(q=>q.ticker&&q.price!=null&&q.price>=0);
+  let holdingsUpdated=0,radarUpdated=0;
+  const results=[];
+  const at=capturedAt||isoNow();
+  quotes.forEach(q=>{
+    let matched=false;
+    const h=data.holdings.find(x=>normalizeTicker(x.ticker)===q.ticker && (x.market||'JP')===q.market);
+    if(h){
+      h.quotePrice=q.price;h.quoteCurrency=q.currency||marketQuoteCurrency(q.market);
+      h.quoteUpdatedAt=at;h.quoteSource='moomoo';h.quoteStatus='ok';h.updatedAt=at;
+      if(q.leverage>1){h.leverageFactor=q.leverage;if((h.productType||'auto')==='auto')h.productType='leveraged';}
+      if(defaultValuationCurrency(h)===h.quoteCurrency)h.value=q.price*(+h.qty||0);
+      appendHoldingHistory(h);holdingsUpdated++;matched=true;
+    }
+    const r=data.radar.find(x=>normalizeTicker(x.ticker)===q.ticker && (x.market||'JP')===q.market);
+    if(r){r.price=q.price;r.updatedAt=at;radarUpdated++;matched=true;}
+    const baseMove=(q.leverage>1&&q.changePercent!=null)?q.changePercent/q.leverage:null;
+    results.push({...q,matched,baseMove});
+  });
+  if(holdingsUpdated)appendPortfolioHistory();
+  data.moomooImports.unshift({createdAt:at,quotes:results.map(q=>({ticker:q.ticker,price:q.price,market:q.market,leverage:q.leverage}))});
+  data.moomooImports=data.moomooImports.slice(0,30);
+  save();render();
+  return {quotes:results,holdingsUpdated,radarUpdated};
+}
+function renderMoomooResult(applied){
+  if(!moomooImportResult)return;
+  if(!applied.quotes.length){moomooImportResult.innerHTML='<div class="candidate candidate-error">銘柄と現在値を読み取れませんでした。</div>';return;}
+  moomooImportResult.innerHTML=applied.quotes.map(q=>{
+    const lev=q.leverage>1?`<span class="product-tag special">ブル${q.leverage}倍</span>`:'';
+    const move=q.changePercent==null?'':` / 騰落 ${q.changePercent>=0?'+':''}${q.changePercent.toFixed(2)}%`;
+    const base=q.baseMove==null?'':`<br><small>日次${q.leverage}倍商品の目安：原指数の値動き換算 約${q.baseMove>=0?'+':''}${q.baseMove.toFixed(2)}%（単純換算・乖離あり）</small>`;
+    return `<article class="card"><div class="row"><div><strong>${esc(q.name||q.ticker)}</strong><div class="sub">${esc(q.market)}・${esc(q.ticker)} ${lev}</div></div><div class="price">${currencyMoney(q.price,q.currency)}</div></div><p class="bullet">${q.matched?'✅ 登録銘柄へ反映':'⚪ 未登録銘柄'}${move}${base}</p></article>`;
+  }).join('');
+}
+if(selectMoomooImageBtn)selectMoomooImageBtn.onclick=()=>moomooImageInput.click();
+if(moomooImageInput)moomooImageInput.onchange=()=>{
+  const file=moomooImageInput.files?.[0];
+  if(!file)return resetMoomooPreview();
+  if(!file.type.startsWith('image/')){alert('画像ファイルを選んでください');return resetMoomooPreview();}
+  if(file.size>8*1024*1024){alert('画像が大きすぎます。8MB以下のスクショを選んでください。');return resetMoomooPreview();}
+  if(moomooImageUrl)URL.revokeObjectURL(moomooImageUrl);
+  moomooImageFile=file;moomooImageUrl=URL.createObjectURL(file);
+  moomooImagePreview.className='sns-image-preview';
+  moomooImagePreview.innerHTML=`<img src="${moomooImageUrl}" alt="選択したmoomooスクリーンショット"><button type="button" id="clearMoomooImageBtn" class="sns-clear-btn">×</button><div class="sns-image-meta">${Math.max(1,Math.round(file.size/1024))}KB</div>`;
+  document.querySelector('#clearMoomooImageBtn').onclick=resetMoomooPreview;
+  analyzeMoomooImageBtn.disabled=false;
+  moomooImportStatus.textContent='✅ 画像OK。「株価をAI読込」を押してください。';
+};
+if(analyzeMoomooImageBtn)analyzeMoomooImageBtn.onclick=async()=>{
+  if(!moomooImageFile)return;
+  analyzeMoomooImageBtn.disabled=true;analyzeMoomooImageBtn.textContent='⏳ AI読込中…';
+  moomooImportStatus.textContent='🟡 moomoo画面から銘柄・現在値・ブル倍率を読み取り中…';
+  try{
+    const image=await fileToDataUrl(moomooImageFile);
+    const known=[...data.holdings.map(h=>`${h.market} ${h.ticker} ${h.name}`),...data.radar.map(r=>`${r.market} ${r.ticker} ${r.name}`)].slice(0,40).join(' / ');
+    const res=await fetch(MOOMOO_AI_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({image,known})});
+    const raw=await res.text();let payload=null;try{payload=raw?JSON.parse(raw):null;}catch(_){payload=null;}
+    if(!res.ok||payload?.ok===false)throw new Error(payload?.error||raw||`HTTP ${res.status}`);
+    if(!payload||!Array.isArray(payload.quotes))throw new Error('株価データ形式を確認できません');
+    const applied=applyMoomooQuotes(payload.quotes,payload.capturedAt||payload.checkedAt);
+    renderMoomooResult(applied);
+    moomooImportStatus.textContent=`✅ ${applied.quotes.length}銘柄読取 / 保有株 ${applied.holdingsUpdated}件更新 / レーダー ${applied.radarUpdated}件更新`;
+  }catch(err){moomooImportStatus.textContent=`🔴 読込失敗：${String(err?.message||err).slice(0,500)}`;}
+  finally{analyzeMoomooImageBtn.disabled=!moomooImageFile;analyzeMoomooImageBtn.textContent='📈 株価をAI読込';}
+};
 
 // v0.64: Cloudflare Workers AI へSNSスクショを直接送信
 const SNS_AI_ENDPOINT='https://stock-buddy-ai.toshibou-fishing.workers.dev/sns-analyze';
