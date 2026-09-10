@@ -1,4 +1,4 @@
-const APP_VERSION='0.67.0';
+const APP_VERSION='0.68.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -420,21 +420,46 @@ function resetMoomooPreview(){
   moomooImportStatus.textContent='スクショを選ぶ → 株価をAI読込、だけでOKです。';
 }
 function normalizeTicker(t=''){return String(t).trim().toUpperCase().replace(/[^0-9A-Z.\-]/g,'');}
+const KNOWN_LEVERAGED_TICKERS={
+  SPXL:{leverage:3,direction:'bull',label:'S&P500 ブル3倍'},
+  AMZU:{leverage:2,direction:'bull',label:'Amazon ブル2倍'}
+};
+function leverageFromQuote(q={}){
+  const ticker=normalizeTicker(q.ticker);
+  const known=KNOWN_LEVERAGED_TICKERS[ticker];
+  const fromAi=Number(q.leverage);
+  const fromName=detectLeverage(q.name||'');
+  const leverage=Math.max(1,Math.min(5,(fromAi>1?fromAi:(fromName||known?.leverage||1))));
+  let direction=String(q.direction||'normal').toLowerCase();
+  if(known?.direction)direction=known.direction;
+  if(leverage>1 && direction==='normal')direction='bull';
+  return {leverage,direction};
+}
 function normalizeMoomooQuote(q={}){
   const market=String(q.market||'').toUpperCase()==='JP'?'JP':'US';
   const price=Number(q.price);
-  const leverage=Math.max(1,Math.min(5,Number(q.leverage)||1));
   const changePercent=Number(q.changePercent);
+  const lev=leverageFromQuote(q);
   return {
     ticker:normalizeTicker(q.ticker),name:String(q.name||'').trim(),market,
     price:Number.isFinite(price)?price:null,currency:q.currency||(market==='JP'?'JPY':'USD'),
     changePercent:Number.isFinite(changePercent)?changePercent:null,
-    leverage, direction:String(q.direction||'normal').toLowerCase(),
-    productType:String(q.productType||'').toLowerCase(),confidence:Math.max(0,Math.min(100,Number(q.confidence)||0))
+    leverage:lev.leverage,direction:lev.direction,
+    productType:lev.leverage>1?'leveraged':String(q.productType||'').toLowerCase(),confidence:Math.max(0,Math.min(100,Number(q.confidence)||0))
   };
 }
+function fixMoomooPercentScale(quotes=[]){
+  const vals=quotes.map(q=>q.changePercent).filter(v=>Number.isFinite(v)&&v!==0);
+  if(!vals.length)return quotes;
+  const scaled=vals.filter(v=>Math.abs(v)>=50).length;
+  // Workers AIが 3.00% を300として返すケースを、画像単位で判定して補正。
+  if(scaled/vals.length>=0.6){
+    quotes.forEach(q=>{if(Number.isFinite(q.changePercent))q.changePercent=q.changePercent/100;});
+  }
+  return quotes;
+}
 function applyMoomooQuotes(rawQuotes,capturedAt){
-  const quotes=(Array.isArray(rawQuotes)?rawQuotes:[]).map(normalizeMoomooQuote).filter(q=>q.ticker&&q.price!=null&&q.price>=0);
+  const quotes=fixMoomooPercentScale((Array.isArray(rawQuotes)?rawQuotes:[]).map(normalizeMoomooQuote).filter(q=>q.ticker&&q.price!=null&&q.price>=0));
   let holdingsUpdated=0,radarUpdated=0;
   const results=[];
   const at=capturedAt||isoNow();
