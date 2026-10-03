@@ -345,7 +345,7 @@ function renderTotals(){
   total.textContent=usdValue?`${yen(jpyValue)} + $${usdValue.toLocaleString('en-US',{maximumFractionDigits:2})}`:yen(jpyValue);
   const pnlJPY=jpyCostKnown?jpyValue-jpyCost:null,pctJPY=(jpyCostKnown&&jpyCost)?pnlJPY/jpyCost*100:null;
   const t=document.querySelector('#totalPnl');
-  t.textContent=usdValue?`円評価 ${pnlJPY==null?'損益未登録':`${pnlJPY>=0?'+':''}${yen(pnlJPY)}`} / USD評価 ${usdCostKnown?`${usdValue-usdCost>=0?'+':''}$${(usdValue-usdCost).toFixed(2)}`:'損益未登録'}`:(pnlJPY==null?'損益未登録':`${pnlJPY>=0?'+':''}${yen(pnlJPY)}（${pctJPY>=0?'+':''}${pctJPY.toFixed(1)}%）`);
+  t.textContent=usdValue?`円評価 ${pnlJPY==null?'損益未登録':`${pnlJPY>=0?'+':''}${yen(pnlJPY)}`} / USD評価 ${usdCostKnown?`${usdValue-usdCost>=0?'+':''}$${(usdValue-usdCost).toFixed(2)}`:'損益未登録'}`:(pnlJPY==null?'損益未登録':`${pnlJPY>=0?'+':''}${yen(pnlJPY)}（${pctJPY==null?'—':`${pctJPY>=0?'+':''}${pctJPY.toFixed(1)}%`}）`);
   t.className='pnl '+(pnlJPY==null?'':(pnlJPY>=0?'positive':'negative'));
   const sigs=data.holdings.map(deriveSignal);
   document.querySelector('#overallSignal').textContent=!sigs.length?'未判定':sigs.includes('escape')?'要確認':sigs.includes('take')?'利確確認':sigs.includes('hold')?'保有確認':'様子見';
