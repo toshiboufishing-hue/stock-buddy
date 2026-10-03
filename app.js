@@ -1,4 +1,4 @@
-const APP_VERSION='0.70.0';
+const APP_VERSION='0.71.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -186,7 +186,7 @@ function markQuoteFailed(ticker,market){
   const h=data.holdings.find(x=>String(x.ticker).toUpperCase()===String(ticker).toUpperCase() && (x.market||'JP')===(market||'JP'));
   if(!h)return false;h.quoteStatus='failed';save();render();return true;
 }
-window.StockBuddyMarket={applyMarketQuote,markQuoteFailed};
+window.StockBuddyMarket={applyMarketQuote,markQuoteFailed};\n\n// v0.71: PC上のmoomoo OpenDブリッジから実株価を直接取得\nconst MOOMOO_LOCAL_BRIDGE='http://127.0.0.1:8765/quotes';\nasync function refreshMoomooLocalQuotes(){\n  const usTickers=[...new Set([...(data.holdings||[]),...(data.radar||[])].map(x=>normalizeTicker(x.ticker)).filter(t=>isUsStyleTicker(t)))];\n  if(!usTickers.length)return {ok:true,quotes:[],holdingsUpdated:0,radarUpdated:0};\n  const url=`${MOOMOO_LOCAL_BRIDGE}?symbols=${encodeURIComponent(usTickers.join(','))}`;\n  const res=await fetch(url,{cache:'no-store'});\n  if(!res.ok)throw new Error(`moomoo bridge HTTP ${res.status}`);\n  const payload=await res.json();\n  if(!payload?.ok||!Array.isArray(payload.quotes))throw new Error(payload?.error||'moomoo bridge response error');\n  const quotes=payload.quotes.map(q=>({\n    ticker:normalizeTicker(q.ticker||String(q.code||'').replace(/^US\\./i,'')),\n    name:q.name||'',market:'US',price:Number(q.price),currency:q.currency||'USD',\n    changePercent:Number(q.changePercent),leverage:paypayCourseInfo(q.ticker)?.leverage||1,\n    direction:paypayCourseInfo(q.ticker)?.direction||'normal',productType:'',confidence:100\n  }));\n  return applyMoomooQuotes(quotes,payload.capturedAt||isoNow());\n}\nwindow.StockBuddyMoomoo={refresh:refreshMoomooLocalQuotes};\n
 
 function historyPoint(value, market='JP'){
   return {at:new Date().toISOString(),value:+value||0,market};
@@ -799,3 +799,4 @@ function renderSnsHistory(){
 }
 
 render();runStartupResearch();
+\n\n// v0.71: PCでOpenDブリッジが動いている時だけ自動更新。スマホ等では静かにスキップ。\nsetTimeout(async()=>{\n  try{\n    const applied=await refreshMoomooLocalQuotes();\n    if(applied?.quotes?.length)console.log(`moomoo local: ${applied.quotes.length} quotes updated`);\n  }catch(e){console.log('moomoo local bridge unavailable:',e?.message||e);}\n},1200);\n
