@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#101417" />
   <title>相棒 STOCK</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=0.60.0" />
+  <link rel="stylesheet" href="styles.css?v=0.72.2" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.72</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.72.2</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -125,7 +125,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.72 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.72.2 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -145,10 +145,11 @@
         <p class="notice">スマホとPCの保存データは別です。書き出したバックアップを別端末で読み込むと、保有株・レーダー・履歴などを移せます。</p>
         <div class="card-actions">
           <button id="exportBackupBtn" type="button">📤 バックアップを書き出す</button>
+          <button id="copyBackupBtn" type="button">📋 バックアップをコピー</button>
           <button id="importBackupBtn" type="button">📥 バックアップを読み込む</button>
         </div>
         <input id="backupFileInput" type="file" accept="application/json,.json" hidden>
-        <p id="backupStatus" class="sub">端末内データ全体をJSONで保存・復元します。</p>
+        <p id="backupStatus" class="sub">端末内データ全体をJSONで保存・コピー・復元します。</p>
       </div>
       <button id="resetBtn" class="danger">全データを初期化</button>
     </section>
@@ -212,6 +213,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.72.0"></script>
+  <script src="app.js?v=0.72.2"></script>
 </body>
 </html>
