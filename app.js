@@ -1,4 +1,4 @@
-const APP_VERSION='0.72.1';
+const APP_VERSION='0.72.2';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -889,4 +889,3 @@ setTimeout(async()=>{
     if(applied?.quotes?.length)console.log(`moomoo local: ${applied.quotes.length} quotes updated`);
   }catch(e){console.log('moomoo local bridge unavailable:',e?.message||e);}
 },1200);
-
