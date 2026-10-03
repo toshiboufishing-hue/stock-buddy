@@ -1,4 +1,4 @@
-const APP_VERSION='0.71.0';
+const APP_VERSION='0.72.0';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -777,6 +777,45 @@ applyPaypayQuickBtn.onclick=()=>{
 };
 
 document.querySelector('#notifyBtn').onclick=async()=>{if(!('Notification'in window)){alert('このブラウザは通知に対応していません');return}const p=await Notification.requestPermission();if(p==='granted')new Notification('相棒 STOCK',{body:'起動時調査の通知テストです'});};
+// v0.72: 端末間バックアップ / 復元
+function backupPayload(){
+  return {app:'相棒 STOCK',version:APP_VERSION,exportedAt:new Date().toISOString(),storageKey:STORAGE_KEY,data:clone(data)};
+}
+function downloadBackup(){
+  const payload=backupPayload();
+  const blob=new Blob([JSON.stringify(payload,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob),a=document.createElement('a');
+  const d=new Date(),stamp=`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}-${String(d.getHours()).padStart(2,'0')}${String(d.getMinutes()).padStart(2,'0')}`;
+  a.href=url;a.download=`stock-buddy-backup-${stamp}.json`;document.body.appendChild(a);a.click();a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),1000);
+  const st=document.querySelector('#backupStatus');if(st)st.textContent=`✅ バックアップを書き出しました（${data.holdings?.length||0}保有 / ${data.radar?.length||0}監視）`;
+}
+function validBackupData(x){return x&&typeof x==='object'&&Array.isArray(x.holdings)&&Array.isArray(x.radar);}
+async function importBackupFile(file){
+  const st=document.querySelector('#backupStatus');
+  try{
+    const parsed=JSON.parse(await file.text());
+    const incoming=parsed?.data??parsed;
+    if(!validBackupData(incoming))throw new Error('相棒STOCKのバックアップ形式ではありません');
+    const h=incoming.holdings.length,r=incoming.radar.length;
+    if(!confirm(`このバックアップを読み込みますか？\n保有株 ${h}件 / 監視 ${r}件\n\nこの端末の現在データは置き換わります。`))return;
+    data={...clone(seed),...incoming};
+    if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
+    if(!Array.isArray(data.snsHistory))data.snsHistory=[];
+    if(!Array.isArray(data.moomooImports))data.moomooImports=[];
+    (data.holdings||[]).forEach(x=>{if(!Array.isArray(x.history))x.history=[];});
+    save();render();runStartupResearch();
+    if(st)st.textContent=`✅ 復元完了：保有株 ${h}件 / 監視 ${r}件`;
+    setTimeout(async()=>{try{await refreshMoomooLocalQuotes();}catch(_){}},500);
+  }catch(e){if(st)st.textContent=`🔴 読み込み失敗：${e?.message||e}`;alert(`バックアップを読み込めませんでした。\n${e?.message||e}`);}
+}
+const exportBackupBtn=document.querySelector('#exportBackupBtn');
+const importBackupBtn=document.querySelector('#importBackupBtn');
+const backupFileInput=document.querySelector('#backupFileInput');
+if(exportBackupBtn)exportBackupBtn.onclick=downloadBackup;
+if(importBackupBtn)importBackupBtn.onclick=()=>backupFileInput?.click();
+if(backupFileInput)backupFileInput.onchange=async()=>{const f=backupFileInput.files?.[0];if(f)await importBackupFile(f);backupFileInput.value='';};
+
 document.querySelector('#resetBtn').onclick=()=>{if(confirm('保有株・監視株を含む全データを初期化しますか？')){data=clone(seed);save();render();runStartupResearch();}};
 
 ensureInitialHistory();
