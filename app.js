@@ -1,11 +1,12 @@
-const APP_VERSION='0.72.2';
+const APP_VERSION='0.73';
 const STORAGE_KEY='stockBuddyDataV02';
-const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],research:{lastRun:null,lastSummary:null}};
+const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],settings:{moomooBridgeUrl:''},research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
 let data=loadData();
 if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
 if(!Array.isArray(data.snsHistory))data.snsHistory=[];
 if(!Array.isArray(data.moomooImports))data.moomooImports=[];
+if(!data.settings||typeof data.settings!=='object')data.settings={moomooBridgeUrl:''};
 (data.holdings||[]).forEach(h=>{if(!Array.isArray(h.history))h.history=[];});
 
 function loadData(){
@@ -188,12 +189,27 @@ function markQuoteFailed(ticker,market){
 }
 window.StockBuddyMarket={applyMarketQuote,markQuoteFailed};
 
-// v0.71: PC上のmoomoo OpenDブリッジから実株価を直接取得
+// v0.73: PCローカル / Cloudflare Tunnel のどちらからでもmoomoo OpenD実株価を取得
 const MOOMOO_LOCAL_BRIDGE='http://127.0.0.1:8765/quotes';
+const MOOMOO_QUICK_TUNNEL_DEFAULT='https://helped-products-observation-engage.trycloudflare.com/quotes';
+function normalizeBridgeUrl(raw=''){
+  let u=String(raw||'').trim();
+  if(!u)return '';
+  u=u.replace(/\/+$/,'');
+  if(!/\/quotes(?:\?|$)/i.test(u))u+='/quotes';
+  return u;
+}
+function currentMoomooBridgeUrl(){
+  const saved=normalizeBridgeUrl(data.settings?.moomooBridgeUrl||'');
+  if(saved)return saved;
+  return location.hostname==='127.0.0.1'||location.hostname==='localhost'
+    ? MOOMOO_LOCAL_BRIDGE : MOOMOO_QUICK_TUNNEL_DEFAULT;
+}
 async function refreshMoomooLocalQuotes(){
   const usTickers=[...new Set([...(data.holdings||[]),...(data.radar||[])].map(x=>normalizeTicker(x.ticker)).filter(t=>isUsStyleTicker(t)))];
   if(!usTickers.length)return {ok:true,quotes:[],holdingsUpdated:0,radarUpdated:0};
-  const url=`${MOOMOO_LOCAL_BRIDGE}?symbols=${encodeURIComponent(usTickers.join(','))}`;
+  const base=currentMoomooBridgeUrl();
+  const url=`${base}${base.includes('?')?'&':'?'}symbols=${encodeURIComponent(usTickers.join(','))}`;
   const res=await fetch(url,{cache:'no-store'});
   if(!res.ok)throw new Error(`moomoo bridge HTTP ${res.status}`);
   const payload=await res.json();
@@ -822,6 +838,7 @@ async function importBackupFile(file){
     if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
     if(!Array.isArray(data.snsHistory))data.snsHistory=[];
     if(!Array.isArray(data.moomooImports))data.moomooImports=[];
+    if(!data.settings||typeof data.settings!=='object')data.settings={moomooBridgeUrl:''};
     (data.holdings||[]).forEach(x=>{if(!Array.isArray(x.history))x.history=[];});
     save();render();runStartupResearch();
     if(st)st.textContent=`✅ 復元完了：保有株 ${h}件 / 監視 ${r}件`;
@@ -836,6 +853,44 @@ if(exportBackupBtn)exportBackupBtn.onclick=downloadBackup;
 if(copyBackupBtn)copyBackupBtn.onclick=copyBackup;
 if(importBackupBtn)importBackupBtn.onclick=()=>backupFileInput?.click();
 if(backupFileInput)backupFileInput.onchange=async()=>{const f=backupFileInput.files?.[0];if(f)await importBackupFile(f);backupFileInput.value='';};
+
+
+// v0.73: moomoo Bridge接続先の保存・テスト
+const moomooBridgeUrlInput=document.querySelector('#moomooBridgeUrl');
+const saveMoomooBridgeBtn=document.querySelector('#saveMoomooBridgeBtn');
+const testMoomooBridgeBtn=document.querySelector('#testMoomooBridgeBtn');
+const moomooBridgeStatus=document.querySelector('#moomooBridgeStatus');
+const moomooRealtimeTag=document.querySelector('#moomooRealtimeTag');
+function setMoomooBridgeUi(kind,msg){
+  if(moomooBridgeStatus)moomooBridgeStatus.textContent=msg;
+  if(moomooRealtimeTag){
+    moomooRealtimeTag.className=`tag ${kind==='ok'?'ok':'warn'}`;
+    moomooRealtimeTag.textContent=kind==='ok'?'moomoo OpenD接続中':kind==='fail'?'接続失敗':'接続テスト待ち';
+  }
+}
+if(moomooBridgeUrlInput)moomooBridgeUrlInput.value=currentMoomooBridgeUrl();
+if(saveMoomooBridgeBtn)saveMoomooBridgeBtn.onclick=()=>{
+  const u=normalizeBridgeUrl(moomooBridgeUrlInput?.value||'');
+  if(!/^https?:\/\//i.test(u)){setMoomooBridgeUi('fail','🔴 http:// または https:// から始まるURLを入力してください。');return;}
+  data.settings=data.settings||{};
+  data.settings.moomooBridgeUrl=u; save();
+  if(moomooBridgeUrlInput)moomooBridgeUrlInput.value=u;
+  setMoomooBridgeUi('wait','🟡 URLを保存しました。次に「接続テスト＆更新」を押してください。');
+};
+if(testMoomooBridgeBtn)testMoomooBridgeBtn.onclick=async()=>{
+  testMoomooBridgeBtn.disabled=true;
+  setMoomooBridgeUi('wait','🟡 moomoo OpenDから実株価を取得中…');
+  try{
+    if(moomooBridgeUrlInput){
+      const u=normalizeBridgeUrl(moomooBridgeUrlInput.value);
+      if(u){data.settings=data.settings||{};data.settings.moomooBridgeUrl=u;save();}
+    }
+    const applied=await refreshMoomooLocalQuotes();
+    setMoomooBridgeUi('ok',`🟢 接続成功：${applied.quotes.length}銘柄取得 / 保有株 ${applied.holdingsUpdated}件更新`);
+  }catch(e){
+    setMoomooBridgeUi('fail',`🔴 接続失敗：${String(e?.message||e).slice(0,180)}`);
+  }finally{testMoomooBridgeBtn.disabled=false;}
+};
 
 document.querySelector('#resetBtn').onclick=()=>{if(confirm('保有株・監視株を含む全データを初期化しますか？')){data=clone(seed);save();render();runStartupResearch();}};
 
@@ -886,6 +941,13 @@ render();runStartupResearch();
 setTimeout(async()=>{
   try{
     const applied=await refreshMoomooLocalQuotes();
-    if(applied?.quotes?.length)console.log(`moomoo local: ${applied.quotes.length} quotes updated`);
-  }catch(e){console.log('moomoo local bridge unavailable:',e?.message||e);}
+    if(applied?.quotes?.length){
+      console.log(`moomoo bridge: ${applied.quotes.length} quotes updated`);
+      setMoomooBridgeUi('ok',`🟢 自動接続成功：${applied.quotes.length}銘柄取得`);
+    }
+  }catch(e){
+    console.log('moomoo bridge unavailable:',e?.message||e);
+    setMoomooBridgeUi('fail',`🔴 自動接続失敗：${String(e?.message||e).slice(0,180)}`);
+  }
 },1200);
+
