@@ -6,13 +6,13 @@
   <meta name="theme-color" content="#101417" />
   <title>相棒 STOCK</title>
   <link rel="manifest" href="manifest.webmanifest" />
-  <link rel="stylesheet" href="styles.css?v=0.72.2" />
+  <link rel="stylesheet" href="styles.css?v=0.75" />
 </head>
 <body>
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.74</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.75</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -124,8 +124,29 @@
       <div id="snsHistory" class="stack"></div>
     </section>
 
+
+    <section id="trade" class="panel">
+      <div class="section-head"><div><h2>🤖 AIデモ売買</h2><p>まずはmoomoo SIMULATE専用。提案→承認→発注→履歴を確認。</p></div></div>
+      <div class="card trade-card">
+        <div class="trade-head"><strong>デモ口座</strong><span id="tradeModeTag" class="tag warn">PC接続待ち</span></div>
+        <div id="tradeAccount" class="trade-account">PCで相棒STOCKを開くとデモ口座を確認できます。</div>
+        <button id="refreshTradeBtn" class="small-btn full-btn">↻ デモ口座・注文を更新</button>
+      </div>
+      <div class="card trade-card">
+        <h3>AI売買提案（試作）</h3>
+        <p class="notice">現段階は保有損益と最新株価を使うルール判定。外部AI・ニュース連携は次段階で追加します。</p>
+        <label>米国銘柄<select id="tradeTicker"></select></label>
+        <button id="makeTradeProposalBtn" class="primary full-btn">🤖 提案を作る</button>
+        <div id="tradeProposal" class="trade-proposal empty">まだ提案はありません。</div>
+      </div>
+      <div class="card trade-card">
+        <h3>デモ注文履歴</h3>
+        <div id="tradeOrders" class="stack"><div class="sub">PC接続後に取得します。</div></div>
+      </div>
+    </section>
+
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.74 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.75 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -170,6 +191,7 @@
     <button class="nav-btn active" data-tab="portfolio"><span>💼</span><small>保有株</small></button>
     <button class="nav-btn" data-tab="radar"><span>🚀</span><small>レーダー</small></button>
     <button class="nav-btn" data-tab="sns"><span>🔎</span><small>SNS</small></button>
+    <button class="nav-btn" data-tab="trade"><span>🤖</span><small>デモ売買</small></button>
     <button class="nav-btn" data-tab="settings"><span>⚙️</span><small>設定</small></button>
   </nav>
 
@@ -224,6 +246,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.74"></script>
+  <script src="app.js?v=0.75"></script>
 </body>
 </html>

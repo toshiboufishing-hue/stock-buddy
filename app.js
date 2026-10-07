@@ -1,11 +1,12 @@
-const APP_VERSION='0.74';
+const APP_VERSION='0.75';
 const STORAGE_KEY='stockBuddyDataV02';
-const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],settings:{moomooBridgeUrl:''},research:{lastRun:null,lastSummary:null}};
+const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],tradeHistory:[],settings:{moomooBridgeUrl:''},research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
 let data=loadData();
 if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
 if(!Array.isArray(data.snsHistory))data.snsHistory=[];
 if(!Array.isArray(data.moomooImports))data.moomooImports=[];
+if(!Array.isArray(data.tradeHistory))data.tradeHistory=[];
 if(!data.settings||typeof data.settings!=='object')data.settings={moomooBridgeUrl:''};
 (data.holdings||[]).forEach(h=>{if(!Array.isArray(h.history))h.history=[];});
 
@@ -852,6 +853,7 @@ async function importBackupFile(file){
     if(!Array.isArray(data.portfolioHistory))data.portfolioHistory=[];
     if(!Array.isArray(data.snsHistory))data.snsHistory=[];
     if(!Array.isArray(data.moomooImports))data.moomooImports=[];
+    if(!Array.isArray(data.tradeHistory))data.tradeHistory=[];
     if(!data.settings||typeof data.settings!=='object')data.settings={moomooBridgeUrl:''};
     (data.holdings||[]).forEach(x=>{if(!Array.isArray(x.history))x.history=[];});
     save();render();runStartupResearch();
@@ -906,6 +908,65 @@ if(testMoomooBridgeBtn)testMoomooBridgeBtn.onclick=async()=>{
     setMoomooBridgeUi('fail',`🔴 接続失敗：${String(e?.message||e).slice(0,180)}`);
   }finally{testMoomooBridgeBtn.disabled=false;}
 };
+
+
+
+// v0.75: AIデモ売買（SIMULATE専用・発注はPCローカルBridgeのみ）
+const TRADE_LOCAL_BASE='http://127.0.0.1:8765';
+let currentTradeProposal=null;
+function tradeEls(){return {ticker:document.querySelector('#tradeTicker'),account:document.querySelector('#tradeAccount'),orders:document.querySelector('#tradeOrders'),proposal:document.querySelector('#tradeProposal'),tag:document.querySelector('#tradeModeTag')}}
+function fillTradeTickers(){
+  const e=tradeEls(), old=e.ticker?.value;if(!e.ticker)return;
+  const rows=[...(data.holdings||[]),...(data.radar||[])].filter(x=>(x.market||'JP')==='US'&&normalizeTicker(x.ticker));
+  const seen=new Set();e.ticker.innerHTML='';
+  rows.forEach(x=>{const t=normalizeTicker(x.ticker);if(seen.has(t))return;seen.add(t);const o=document.createElement('option');o.value=t;o.textContent=`${t} ${x.name||''}`;e.ticker.appendChild(o)});
+  if(old&&seen.has(old))e.ticker.value=old;
+}
+async function tradeFetch(path,opt={}){
+  if(!isLocalApp())throw new Error('安全のためデモ発注はPCローカル接続だけ有効です');
+  const res=await fetch(TRADE_LOCAL_BASE+path,{cache:'no-store',...opt,headers:{'Content-Type':'application/json',...(opt.headers||{})}});
+  const payload=await res.json().catch(()=>({}));if(!res.ok||payload?.ok===false)throw new Error(payload?.error||`Bridge HTTP ${res.status}`);return payload;
+}
+async function refreshTradePanel(){
+  fillTradeTickers();const e=tradeEls();if(!e.account)return;
+  if(!isLocalApp()){e.tag.className='tag warn';e.tag.textContent='スマホは閲覧のみ';e.account.textContent='🔒 発注APIは外部公開しません。PCローカルからのみデモ発注できます。';return;}
+  e.account.textContent='デモ口座を確認中…';
+  try{
+    const [a,o]=await Promise.all([tradeFetch('/trade/account'),tradeFetch('/trade/orders')]);
+    e.tag.className='tag ok';e.tag.textContent='SIMULATE';
+    e.account.innerHTML=`<b>総資産 $${Number(a.total_assets||0).toLocaleString()}</b><span>買付余力 $${Number(a.power||0).toLocaleString()} / 現金 $${Number(a.us_cash||0).toLocaleString()}</span>`;
+    const orders=Array.isArray(o.orders)?o.orders:Array.isArray(o.data)?o.data:[];
+    e.orders.innerHTML=orders.length?orders.slice().reverse().slice(0,20).map(x=>`<div class="trade-order"><b>${esc(String(x.code||'').replace(/^US\./,''))} ${esc(x.trd_side||x.side||'')}</b><span>${esc(x.order_status||x.status||'')}・${Number(x.qty||0)}株 @ $${Number(x.price||0).toFixed(2)}</span></div>`).join(''):'<div class="sub">デモ注文はまだありません。</div>';
+  }catch(err){e.tag.className='tag warn';e.tag.textContent='接続失敗';e.account.textContent=`🔴 ${err.message}`;}
+}
+function makeTradeProposal(){
+  fillTradeTickers();const e=tradeEls(),ticker=normalizeTicker(e.ticker?.value||'');if(!ticker){e.proposal.textContent='米国銘柄がありません。';return;}
+  const h=(data.holdings||[]).find(x=>(x.market||'JP')==='US'&&normalizeTicker(x.ticker)===ticker);
+  const price=Number(h?.quotePrice||h?.price||0);const sig=h?deriveSignal(h):'wait';
+  let side='WAIT',reason='強い売買条件なし。最新材料待ち。';
+  if(sig==='escape'){side='SELL';reason='損失率が警戒ライン。デモで売却判断を検証。'}
+  else if(sig==='take'){side='SELL';reason='利益率が利確確認ライン。デモで利確判断を検証。'}
+  else if(sig==='hold'){side='WAIT';reason='含み益圏。現状は保有継続を優先。'}
+  currentTradeProposal={ticker,side,qty:1,price:price>0?price:null,reason,createdAt:new Date().toISOString()};
+  const disabled=side==='WAIT'||!price||!isLocalApp();
+  e.proposal.className='trade-proposal';e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${price?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price?price.toFixed(2):''}"></label><button id="approveDemoOrderBtn" class="primary full-btn" ${disabled?'disabled':''}>✅ この内容でデモ発注</button>`:'<div class="sub">今回は発注しません。</div>'}${!isLocalApp()?'<div class="trade-lock">🔒 スマホからの発注は認証機構を作るまで停止中</div>':''}`;
+  document.querySelector('#approveDemoOrderBtn')?.addEventListener('click',placeApprovedDemoOrder);
+}
+async function placeApprovedDemoOrder(){
+  if(!currentTradeProposal||currentTradeProposal.side==='WAIT')return;
+  const qty=Number(document.querySelector('#tradeQty')?.value),price=Number(document.querySelector('#tradePrice')?.value);if(!(qty>0)||!(price>0)){alert('数量と指値を確認してください。');return;}
+  if(!confirm(`moomooデモ口座へ発注します。\n${currentTradeProposal.ticker} ${currentTradeProposal.side}\n${qty}株 @ $${price.toFixed(2)}\n\n※実口座には発注しません。`))return;
+  const btn=document.querySelector('#approveDemoOrderBtn');if(btn)btn.disabled=true;
+  try{
+    const r=await tradeFetch('/trade/order',{method:'POST',body:JSON.stringify({ticker:currentTradeProposal.ticker,side:currentTradeProposal.side,qty,price})});
+    data.tradeHistory=data.tradeHistory||[];data.tradeHistory.push({...currentTradeProposal,qty,price,result:r,approvedAt:new Date().toISOString(),mode:'SIMULATE'});save();
+    alert('✅ moomooデモ注文を送信しました。');await refreshTradePanel();
+  }catch(err){alert(`デモ発注失敗：${err.message}`)}finally{if(btn)btn.disabled=false;}
+}
+document.querySelector('#refreshTradeBtn')?.addEventListener('click',refreshTradePanel);
+document.querySelector('#makeTradeProposalBtn')?.addEventListener('click',makeTradeProposal);
+document.querySelector('[data-tab="trade"]')?.addEventListener('click',()=>setTimeout(refreshTradePanel,50));
+fillTradeTickers();
 
 document.querySelector('#resetBtn').onclick=()=>{if(confirm('保有株・監視株を含む全データを初期化しますか？')){data=clone(seed);save();render();runStartupResearch();}};
 
