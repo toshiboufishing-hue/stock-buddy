@@ -1,5 +1,5 @@
-const CACHE='stock-buddy-v075';
-const ASSETS=['./','./index.html','./styles.css?v=0.75','./app.js?v=0.75','./manifest.webmanifest'];
+const CACHE='stock-buddy-v076';
+const ASSETS=['./','./index.html','./styles.css?v=0.75','./app.js?v=0.76','./manifest.webmanifest'];
 self.addEventListener('install',e=>{self.skipWaiting();e.waitUntil(caches.open(CACHE).then(c=>c.addAll(ASSETS)))});
 self.addEventListener('activate',e=>{e.waitUntil(Promise.all([caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k)))),self.clients.claim()]))});
 self.addEventListener('fetch',e=>{

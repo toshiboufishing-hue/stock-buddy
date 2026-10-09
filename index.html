@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.75</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.76</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -128,8 +128,9 @@
     <section id="trade" class="panel">
       <div class="section-head"><div><h2>🤖 AIデモ売買</h2><p>まずはmoomoo SIMULATE専用。提案→承認→発注→履歴を確認。</p></div></div>
       <div class="card trade-card">
-        <div class="trade-head"><strong>デモ口座</strong><span id="tradeModeTag" class="tag warn">PC接続待ち</span></div>
-        <div id="tradeAccount" class="trade-account">PCで相棒STOCKを開くとデモ口座を確認できます。</div>
+        <div class="trade-head"><strong>デモ口座</strong><span id="tradeModeTag" class="tag warn">認証待ち</span></div>
+        <label>デモ売買PIN<input id="tradePin" type="password" inputmode="numeric" autocomplete="off" placeholder="Cloudflareに設定したPIN"></label>
+        <div id="tradeAccount" class="trade-account">PINはこの画面の通信時だけ使い、端末には永続保存しません。</div>
         <button id="refreshTradeBtn" class="small-btn full-btn">↻ デモ口座・注文を更新</button>
       </div>
       <div class="card trade-card">
@@ -146,7 +147,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.75 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.76 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -246,6 +247,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.75"></script>
+  <script src="app.js?v=0.76"></script>
 </body>
 </html>
