@@ -948,19 +948,52 @@ async function refreshTradePanel(){
     e.orders.innerHTML=orders.length?orders.slice().reverse().slice(0,20).map(x=>`<div class="trade-order"><b>${esc(String(x.code||'').replace(/^US\./,''))} ${esc(x.trd_side||x.side||'')}</b><span>${esc(x.order_status||x.status||'')}・${Number(x.qty||0)}株 @ $${Number(x.price||0).toFixed(2)}</span></div>`).join(''):'<div class="sub">デモ注文はまだありません。</div>';
   }catch(err){e.tag.className='tag warn';e.tag.textContent='接続失敗';e.account.textContent=`🔴 ${err.message}`;}
 }
-function makeTradeProposal(){
-  fillTradeTickers();const e=tradeEls(),ticker=normalizeTicker(e.ticker?.value||'');if(!ticker){e.proposal.textContent='米国銘柄がありません。';return;}
+// v0.78: 選択銘柄の価格は保有株登録とは独立してBridgeから取得する。
+let tradeQuoteRequest=0;
+async function makeTradeProposal(){
+  const e=tradeEls(),ticker=normalizeTicker(e.ticker?.value||'');
+  if(!ticker){e.proposal.textContent='米国銘柄がありません。';return;}
+  const request=++tradeQuoteRequest;
+  currentTradeProposal=null;
+  e.proposal.className='trade-proposal';
+  e.proposal.textContent=`${ticker} のmoomoo株価を取得中…`;
+  let quote=null,quoteError='';
+  try{
+    const bridge=await resolveMoomooBridgeUrl();
+    const url=`${bridge.url}${bridge.url.includes('?')?'&':'?'}symbols=${encodeURIComponent(ticker)}`;
+    const res=await fetch(url,{cache:'no-store'});
+    if(!res.ok)throw new Error(`HTTP ${res.status}`);
+    const payload=await res.json();
+    if(!payload?.ok||!Array.isArray(payload.quotes))throw new Error(payload?.error||'株価データ形式エラー');
+    quote=payload.quotes.find(q=>normalizeTicker(q.ticker||String(q.code||'').replace(/^US\./i,''))===ticker)||null;
+    if(!quote)throw new Error(`${ticker} の価格が応答にありません`);
+  }catch(err){quoteError=String(err?.message||err);}
+  if(request!==tradeQuoteRequest||e.ticker?.value!==ticker)return;
+  const price=Number(quote?.price);
+  const hasPrice=Number.isFinite(price)&&price>0;
   const h=(data.holdings||[]).find(x=>String(x.market||'JP').toUpperCase()==='US'&&normalizeTicker(String(x.ticker||'').replace(/^US\./i,''))===ticker);
-  const price=Number(h?.quotePrice||h?.price||0);const sig=h?deriveSignal(h):'wait';
-  let side='WAIT',reason='強い売買条件なし。最新材料待ち。';
-  if(sig==='escape'){side='SELL';reason='損失率が警戒ライン。デモで売却判断を検証。'}
-  else if(sig==='take'){side='SELL';reason='利益率が利確確認ライン。デモで利確判断を検証。'}
-  else if(sig==='hold'){side='WAIT';reason='含み益圏。現状は保有継続を優先。'}
-  currentTradeProposal={ticker,side,qty:1,price:price>0?price:null,reason,createdAt:new Date().toISOString()};
-  const disabled=side==='WAIT'||!price;
-  e.proposal.className='trade-proposal';e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${price?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price?price.toFixed(2):''}"></label><button id="approveDemoOrderBtn" class="primary full-btn" ${disabled?'disabled':''}>✅ この内容でデモ発注</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔐 Worker認証経由・moomoo SIMULATE専用</div>`;
+  const sig=h?deriveSignal(h):'wait';
+  let side='WAIT',reason='保有情報がないため売買条件を判定できません。';
+  if(h){
+    reason='強い売買条件なし。最新材料待ち。';
+    if(sig==='escape'){side='SELL';reason='損失率が警戒ライン。デモで売却判断を検証。';}
+    else if(sig==='take'){side='SELL';reason='利益率が利確確認ライン。デモで利確判断を検証。';}
+    else if(sig==='hold'){reason='含み益圏。現状は保有継続を優先。';}
+  }
+  if(!hasPrice){side='WAIT';reason=`価格を取得できません：${quoteError||'データなし'}`;}
+  // Bridgeに相場時刻がない場合は鮮度を検証できないため、発注を許可しない。
+  const quoteAt=quote?.updatedAt||quote?.quoteTime||quote?.timestamp||null;
+  const quoteMs=quoteAt?Date.parse(quoteAt):NaN;
+  const fresh=Number.isFinite(quoteMs)&&Math.abs(Date.now()-quoteMs)<15*60*1000;
+  if(!fresh&&side!=='WAIT'){
+    side='WAIT';reason+=' 相場の更新時刻を確認できないため発注は保留します。';
+  }
+  currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,createdAt:new Date().toISOString()};
+  e.proposal.className='trade-proposal';
+  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p><div class="sub">取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明（リアルタイム保証なし）'}</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ この内容でデモ発注</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔐 Worker認証経由・moomoo SIMULATE専用</div>`;
   document.querySelector('#approveDemoOrderBtn')?.addEventListener('click',placeApprovedDemoOrder);
 }
+
 async function placeApprovedDemoOrder(){
   if(!currentTradeProposal||currentTradeProposal.side==='WAIT')return;
   const qty=Number(document.querySelector('#tradeQty')?.value),price=Number(document.querySelector('#tradePrice')?.value);if(!(qty>0)||!(price>0)){alert('数量と指値を確認してください。');return;}
