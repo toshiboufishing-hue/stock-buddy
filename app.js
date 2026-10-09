@@ -1,4 +1,4 @@
-const APP_VERSION='0.75';
+const APP_VERSION='0.77';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],tradeHistory:[],settings:{moomooBridgeUrl:''},research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -916,10 +916,18 @@ const TRADE_RELAY_BASE='https://stock-buddy-ai.toshibou-fishing.workers.dev';
 let currentTradeProposal=null;
 function tradeEls(){return {ticker:document.querySelector('#tradeTicker'),account:document.querySelector('#tradeAccount'),orders:document.querySelector('#tradeOrders'),proposal:document.querySelector('#tradeProposal'),tag:document.querySelector('#tradeModeTag'),pin:document.querySelector('#tradePin')}}
 function fillTradeTickers(){
-  const e=tradeEls(), old=e.ticker?.value;if(!e.ticker)return;
-  const rows=[...(data.holdings||[]),...(data.radar||[])].filter(x=>(x.market||'JP')==='US'&&normalizeTicker(x.ticker));
+  const e=tradeEls(),old=e.ticker?.value;if(!e.ticker)return;
+  // Demo watchlist stays available even when the local portfolio is empty.
+  const defaults=[{ticker:'SPXL',name:'Direxion Daily S&P 500 Bull 3X'},{ticker:'AMZU',name:'Direxion Daily AMZN Bull 2X'}];
+  const rows=[...defaults,...(data.holdings||[]),...(data.radar||[])];
   const seen=new Set();e.ticker.innerHTML='';
-  rows.forEach(x=>{const t=normalizeTicker(x.ticker);if(seen.has(t))return;seen.add(t);const o=document.createElement('option');o.value=t;o.textContent=`${t} ${x.name||''}`;e.ticker.appendChild(o)});
+  rows.forEach(x=>{
+    const raw=String(x.ticker||x.code||'').toUpperCase().replace(/^US\./,'');
+    const t=normalizeTicker(raw);
+    if(!t||seen.has(t))return;
+    if(!defaults.some(d=>d.ticker===t)&&String(x.market||'JP').toUpperCase()!=='US')return;
+    seen.add(t);const o=document.createElement('option');o.value=t;o.textContent=`${t} ${x.name||''}`;e.ticker.appendChild(o);
+  });
   if(old&&seen.has(old))e.ticker.value=old;
 }
 function getTradePin(){return String(tradeEls().pin?.value||'').trim()}
@@ -942,7 +950,7 @@ async function refreshTradePanel(){
 }
 function makeTradeProposal(){
   fillTradeTickers();const e=tradeEls(),ticker=normalizeTicker(e.ticker?.value||'');if(!ticker){e.proposal.textContent='米国銘柄がありません。';return;}
-  const h=(data.holdings||[]).find(x=>(x.market||'JP')==='US'&&normalizeTicker(x.ticker)===ticker);
+  const h=(data.holdings||[]).find(x=>String(x.market||'JP').toUpperCase()==='US'&&normalizeTicker(String(x.ticker||'').replace(/^US\./i,''))===ticker);
   const price=Number(h?.quotePrice||h?.price||0);const sig=h?deriveSignal(h):'wait';
   let side='WAIT',reason='強い売買条件なし。最新材料待ち。';
   if(sig==='escape'){side='SELL';reason='損失率が警戒ライン。デモで売却判断を検証。'}
