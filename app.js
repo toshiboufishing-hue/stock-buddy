@@ -948,7 +948,7 @@ async function refreshTradePanel(){
     e.orders.innerHTML=orders.length?orders.slice().reverse().slice(0,20).map(x=>`<div class="trade-order"><b>${esc(String(x.code||'').replace(/^US\./,''))} ${esc(x.trd_side||x.side||'')}</b><span>${esc(x.order_status||x.status||'')}・${Number(x.qty||0)}株 @ $${Number(x.price||0).toFixed(2)}</span></div>`).join(''):'<div class="sub">デモ注文はまだありません。</div>';
   }catch(err){e.tag.className='tag warn';e.tag.textContent='接続失敗';e.account.textContent=`🔴 ${err.message}`;}
 }
-// v0.78: 選択銘柄の価格は保有株登録とは独立してBridgeから取得する。
+// v0.79: Bridgeの相場更新時刻を検証し、保有なし銘柄も新規買い候補として表示。
 let tradeQuoteRequest=0;
 async function makeTradeProposal(){
   const e=tradeEls(),ticker=normalizeTicker(e.ticker?.value||'');
@@ -973,7 +973,7 @@ async function makeTradeProposal(){
   const hasPrice=Number.isFinite(price)&&price>0;
   const h=(data.holdings||[]).find(x=>String(x.market||'JP').toUpperCase()==='US'&&normalizeTicker(String(x.ticker||'').replace(/^US\./i,''))===ticker);
   const sig=h?deriveSignal(h):'wait';
-  let side='WAIT',reason='保有情報がないため売買条件を判定できません。';
+  let side='WAIT',reason='未保有銘柄：新規買い候補として監視中。エントリー条件が未設定のため発注しません。';
   if(h){
     reason='強い売買条件なし。最新材料待ち。';
     if(sig==='escape'){side='SELL';reason='損失率が警戒ライン。デモで売却判断を検証。';}
@@ -982,15 +982,18 @@ async function makeTradeProposal(){
   }
   if(!hasPrice){side='WAIT';reason=`価格を取得できません：${quoteError||'データなし'}`;}
   // Bridgeに相場時刻がない場合は鮮度を検証できないため、発注を許可しない。
-  const quoteAt=quote?.updatedAt||quote?.quoteTime||quote?.timestamp||null;
-  const quoteMs=quoteAt?Date.parse(quoteAt):NaN;
-  const fresh=Number.isFinite(quoteMs)&&Math.abs(Date.now()-quoteMs)<15*60*1000;
-  if(!fresh&&side!=='WAIT'){
-    side='WAIT';reason+=' 相場の更新時刻を確認できないため発注は保留します。';
+  const quoteAt=quote?.quoteTimeUtc||quote?.updateTime||quote?.updatedAt||quote?.quoteTime||quote?.timestamp||null;
+  // UTC時刻を優先。取引所ローカル時刻しかない場合は安全のため鮮度未確認扱い。
+  const quoteMs=quote?.quoteTimeUtc?Date.parse(quote.quoteTimeUtc):NaN;
+  const ageMs=Date.now()-quoteMs;
+  const fresh=Number.isFinite(ageMs)&&ageMs>=-60000&&ageMs<15*60*1000;
+  if(!fresh){
+    if(side!=='WAIT')side='WAIT';
+    reason+=' 株価が15分以内に更新されたことを確認できないため発注は保留します。';
   }
   currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,createdAt:new Date().toISOString()};
   e.proposal.className='trade-proposal';
-  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p><div class="sub">取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明（リアルタイム保証なし）'}</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ この内容でデモ発注</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔐 Worker認証経由・moomoo SIMULATE専用</div>`;
+  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p><div class="sub">取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明（リアルタイム保証なし）'} / 鮮度：${fresh?'15分以内':'未確認・時間外・遅延の可能性'}</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ この内容でデモ発注</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔐 Worker認証経由・moomoo SIMULATE専用</div>`;
   document.querySelector('#approveDemoOrderBtn')?.addEventListener('click',placeApprovedDemoOrder);
 }
 
