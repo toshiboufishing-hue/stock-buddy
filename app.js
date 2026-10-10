@@ -972,34 +972,45 @@ async function makeTradeProposal(){
   const price=Number(quote?.price);
   const hasPrice=Number.isFinite(price)&&price>0;
   const h=(data.holdings||[]).find(x=>String(x.market||'JP').toUpperCase()==='US'&&normalizeTicker(String(x.ticker||'').replace(/^US\./i,''))===ticker);
-  const sig=h?deriveSignal(h):'wait';
-  let side='WAIT',reason='未保有銘柄：新規買い候補として監視中。エントリー条件が未設定のため発注しません。';
-  if(h){
-    reason='強い売買条件なし。最新材料待ち。';
-    if(sig==='escape'){side='SELL';reason='損失率が警戒ライン。デモで売却判断を検証。';}
-    else if(sig==='take'){side='SELL';reason='利益率が利確確認ライン。デモで利確判断を検証。';}
-    else if(sig==='hold'){reason='含み益圏。現状は保有継続を優先。';}
-  }
-  if(!hasPrice){side='WAIT';reason=`価格を取得できません：${quoteError||'データなし'}`;}
-  // Bridgeに相場時刻がない場合は鮮度を検証できないため、発注を許可しない。
-  const quoteAt=quote?.quoteTimeUtc||quote?.updateTime||quote?.updatedAt||quote?.quoteTime||quote?.timestamp||null;
-  // UTC時刻を優先。取引所ローカル時刻しかない場合は安全のため鮮度未確認扱い。
+  // v0.80: explainable one-session research signal, not an AI prediction.
+  // Do not infer moving averages or news sentiment from a single quote.
+  const prev=Number(quote?.prevClose);
+  const dailyPct=hasPrice&&Number.isFinite(prev)&&prev>0?(price/prev-1)*100:NaN;
+  const quoteAt=quote?.quoteTimeUtc||quote?.updateTime||null;
   const quoteMs=quote?.quoteTimeUtc?Date.parse(quote.quoteTimeUtc):NaN;
   const ageMs=Date.now()-quoteMs;
   const fresh=Number.isFinite(ageMs)&&ageMs>=-60000&&ageMs<15*60*1000;
-  if(!fresh){
-    if(side!=='WAIT')side='WAIT';
-    reason+=' 株価が15分以内に更新されたことを確認できないため発注は保留します。';
+  const sig=h?deriveSignal(h):'wait';
+  let side='WAIT',assessment='様子見',reason='';
+  if(!hasPrice){reason=`価格を取得できません：${quoteError||'データなし'}`;}
+  else if(!Number.isFinite(dailyPct)){reason='前日終値が取得できないため、値動きの判定はできません。';}
+  else if(!h){
+    assessment=dailyPct>=0.5&&dailyPct<=2.5?'買い候補を監視':dailyPct < -2.5?'下落警戒':'様子見';
+    reason=`未保有銘柄。前日比${dailyPct>=0?'+':''}${dailyPct.toFixed(2)}%。単日変動だけでは新規買いの根拠が足りないため、買い注文は提案しません。`;
+  }else if(sig==='escape'){
+    assessment='売却候補';side='SELL';reason='登録済み保有情報の損失警戒条件に該当。売却を検討するためのデモ案です。';
+  }else if(sig==='take'){
+    assessment='利益確定候補';side='SELL';reason='登録済み保有情報の利確確認条件に該当。利益確定を検討するためのデモ案です。';
+  }else{
+    assessment=dailyPct < -2.5?'下落警戒':'保有・様子見';
+    reason=`登録済み保有情報では強い売却条件なし。前日比${dailyPct>=0?'+':''}${dailyPct.toFixed(2)}%。`;
   }
-  currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,createdAt:new Date().toISOString()};
+  if(!fresh){side='WAIT';reason+=' 株価の更新が15分以内と確認できないため、発注は保留します。';}
+  const riskPct=2;
+  const estimatedRisk=hasPrice?price*riskPct/100:NaN;
+  const analysis=`<div class="sub">判定：<b>${esc(assessment)}</b>（単日値動き・登録済み保有情報に基づく試作ルール）</div>`+
+    `<div class="sub">前日終値：${Number.isFinite(prev)&&prev>0?'$'+prev.toFixed(2):'不明'} / 前日比：${Number.isFinite(dailyPct)?(dailyPct>=0?'+':'')+dailyPct.toFixed(2)+'%':'不明'}</div>`+
+    `<div class="sub">参考リスク：現在値から2%の値幅は1株あたり約${Number.isFinite(estimatedRisk)?'$'+estimatedRisk.toFixed(2):'不明'}（損失上限の保証ではありません）</div>`;
+  currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,quoteTimeUtc:quote?.quoteTimeUtc||null,createdAt:new Date().toISOString()};
   e.proposal.className='trade-proposal';
-  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p><div class="sub">取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明（リアルタイム保証なし）'} / 鮮度：${fresh?'15分以内':'未確認・時間外・遅延の可能性'}</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ この内容でデモ発注</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔐 Worker認証経由・moomoo SIMULATE専用</div>`;
+  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${analysis}<div class="sub">取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明'} / 鮮度：${fresh?'15分以内':'未確認・時間外・遅延の可能性'}</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" max="10" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ 内容を確認してデモ発注</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔐 Worker認証経由・moomoo SIMULATE専用 / AI予測・自動発注ではありません</div>`;
   document.querySelector('#approveDemoOrderBtn')?.addEventListener('click',placeApprovedDemoOrder);
 }
 
 async function placeApprovedDemoOrder(){
   if(!currentTradeProposal||currentTradeProposal.side==='WAIT')return;
-  const qty=Number(document.querySelector('#tradeQty')?.value),price=Number(document.querySelector('#tradePrice')?.value);if(!(qty>0)||!(price>0)){alert('数量と指値を確認してください。');return;}
+  const qty=Number(document.querySelector('#tradeQty')?.value),price=Number(document.querySelector('#tradePrice')?.value);if(!Number.isInteger(qty)||qty<1||qty>10||!Number.isFinite(price)||price<=0){alert('数量は1～10株、指値は正の数値にしてください。');return;}
+  if(!currentTradeProposal.quoteTimeUtc||Date.now()-Date.parse(currentTradeProposal.quoteTimeUtc)>15*60*1000){alert('株価が古いため再分析してください。');return;}
   if(!confirm(`moomooデモ口座へ発注します。\n${currentTradeProposal.ticker} ${currentTradeProposal.side}\n${qty}株 @ $${price.toFixed(2)}\n\n※実口座には発注しません。`))return;
   const btn=document.querySelector('#approveDemoOrderBtn');if(btn)btn.disabled=true;
   try{
