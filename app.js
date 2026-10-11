@@ -973,11 +973,8 @@ async function makeTradeProposal(){
   e.proposal.textContent=`${ticker} のmoomoo株価を取得中…`;
   let quote=null,quoteError='';
   try{
-    const bridge=await resolveMoomooBridgeUrl();
-    const url=`${bridge.url}${bridge.url.includes('?')?'&':'?'}symbols=${encodeURIComponent(ticker)}`;
-    const res=await fetch(url,{cache:'no-store'});
-    if(!res.ok)throw new Error(`HTTP ${res.status}`);
-    const payload=await res.json();
+    // v0.82.1: use the authenticated read-only Worker relay, not the removed direct Bridge URL helper.
+    const payload=await moomooReadFetch('/quotes');
     if(!payload?.ok||!Array.isArray(payload.quotes))throw new Error(payload?.error||'株価データ形式エラー');
     quote=payload.quotes.find(q=>normalizeTicker(q.ticker||String(q.code||'').replace(/^US\./i,''))===ticker)||null;
     if(!quote)throw new Error(`${ticker} の価格が応答にありません`);
