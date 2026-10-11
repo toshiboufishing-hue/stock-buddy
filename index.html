@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.81</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.82</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -126,28 +126,28 @@
 
 
     <section id="trade" class="panel">
-      <div class="section-head"><div><h2>🤖 AIデモ売買</h2><p>まずはmoomoo SIMULATE専用。提案→承認→発注→履歴を確認。</p></div></div>
+      <div class="section-head"><div><h2>🤖 AI売買判断・仮想検証</h2><p>提案 → 相棒が承認 → 端末内で仮想記録。moomooへの注文は一切送信しません。</p></div></div>
       <div class="card trade-card">
-        <div class="trade-head"><strong>デモ口座</strong><span id="tradeModeTag" class="tag warn">認証待ち</span></div>
-        <label>デモ売買PIN<input id="tradePin" type="password" inputmode="numeric" autocomplete="off" placeholder="Cloudflareに設定したPIN"></label>
-        <div id="tradeAccount" class="trade-account">PINはこの画面の通信時だけ使い、端末には永続保存しません。</div>
-        <button id="refreshTradeBtn" class="small-btn full-btn">↻ デモ口座・注文を更新</button>
+        <div class="trade-head"><strong>仮想検証サマリー</strong><span id="tradeModeTag" class="tag ok">LOCAL PAPER・発注なし</span></div>
+        <div id="tradeAccount" class="trade-account">仮想取引の記録を読み込みます。</div>
+        <button id="refreshTradeBtn" class="small-btn full-btn">↻ 仮想履歴を更新</button>
       </div>
       <div class="card trade-card">
-        <h3>AI売買提案（試作）</h3>
-        <p class="notice">現段階は保有損益と最新株価を使うルール判定。外部AI・ニュース連携は次段階で追加します。</p>
+        <h3>売買判断の提案（試作ルール）</h3>
+        <p class="notice">保有情報・単日株価によるルール判定です。外部AI、ニュース・SNS、移動平均の総合判定は未実装です。投資助言や売買成立を意味しません。</p>
         <label>米国銘柄<select id="tradeTicker"></select></label>
         <button id="makeTradeProposalBtn" class="primary full-btn">🤖 提案を作る</button>
         <div id="tradeProposal" class="trade-proposal empty">まだ提案はありません。</div>
       </div>
       <div class="card trade-card">
-        <h3>デモ注文履歴</h3>
-        <div id="tradeOrders" class="stack"><div class="sub">PC接続後に取得します。</div></div>
+        <h3>仮想判断・検証履歴</h3>
+        <p class="notice">承認時点の参考価格を保存し、後日の価格を手入力して値動きを検証します。手数料・税金・為替・スリッページは含みません。データは端末内保存です。</p>
+        <div id="tradeOrders" class="stack"><div class="sub">まだ仮想判断はありません。</div></div>
       </div>
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.81 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.82 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -248,6 +248,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.81"></script>
+  <script src="app.js?v=0.82"></script>
 </body>
 </html>

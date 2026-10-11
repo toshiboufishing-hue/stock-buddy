@@ -1,4 +1,4 @@
-const APP_VERSION='0.77';
+const APP_VERSION='0.82';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],tradeHistory:[],settings:{moomooBridgeUrl:''},research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -931,44 +931,38 @@ if(testMoomooBridgeBtn)testMoomooBridgeBtn.onclick=async()=>{
 
 
 
-// v0.76: AIデモ売買（SIMULATE専用・Worker認証リレー）
-const TRADE_RELAY_BASE='https://stock-buddy-ai.toshibou-fishing.workers.dev';
+// v0.82: Local-only paper decisions. NEVER call /trade/order or any broker order endpoint.
 let currentTradeProposal=null;
-function tradeEls(){return {ticker:document.querySelector('#tradeTicker'),account:document.querySelector('#tradeAccount'),orders:document.querySelector('#tradeOrders'),proposal:document.querySelector('#tradeProposal'),tag:document.querySelector('#tradeModeTag'),pin:document.querySelector('#tradePin')}}
+function tradeEls(){return {ticker:document.querySelector('#tradeTicker'),account:document.querySelector('#tradeAccount'),orders:document.querySelector('#tradeOrders'),proposal:document.querySelector('#tradeProposal'),tag:document.querySelector('#tradeModeTag')}}
 function fillTradeTickers(){
   const e=tradeEls(),old=e.ticker?.value;if(!e.ticker)return;
-  // Demo watchlist stays available even when the local portfolio is empty.
   const defaults=[{ticker:'SPXL',name:'Direxion Daily S&P 500 Bull 3X'},{ticker:'AMZU',name:'Direxion Daily AMZN Bull 2X'}];
   const rows=[...defaults,...(data.holdings||[]),...(data.radar||[])];
   const seen=new Set();e.ticker.innerHTML='';
-  rows.forEach(x=>{
-    const raw=String(x.ticker||x.code||'').toUpperCase().replace(/^US\./,'');
-    const t=normalizeTicker(raw);
-    if(!t||seen.has(t))return;
-    if(!defaults.some(d=>d.ticker===t)&&String(x.market||'JP').toUpperCase()!=='US')return;
+  rows.forEach(x=>{const raw=String(x.ticker||x.code||'').toUpperCase().replace(/^US\./,'');const t=normalizeTicker(raw);
+    if(!t||seen.has(t))return;if(!defaults.some(d=>d.ticker===t)&&String(x.market||'JP').toUpperCase()!=='US')return;
     seen.add(t);const o=document.createElement('option');o.value=t;o.textContent=`${t} ${x.name||''}`;e.ticker.appendChild(o);
-  });
-  if(old&&seen.has(old))e.ticker.value=old;
+  });if(old&&seen.has(old))e.ticker.value=old;
 }
-function getTradePin(){return String(tradeEls().pin?.value||'').trim()}
-async function tradeFetch(path,opt={}){
-  const pin=getTradePin();if(!pin)throw new Error('デモ売買PINを入力してください');
-  const res=await fetch(TRADE_RELAY_BASE+path,{cache:'no-store',...opt,headers:{'Content-Type':'application/json','X-Trade-Pin':pin,...(opt.headers||{})}});
-  const payload=await res.json().catch(()=>({}));if(!res.ok||payload?.ok===false)throw new Error(payload?.error||`Trade relay HTTP ${res.status}`);return payload;
-}
-async function refreshTradePanel(){
+function refreshTradePanel(){
   fillTradeTickers();const e=tradeEls();if(!e.account)return;
-  e.account.textContent='デモ口座を確認中…';
-  try{
-    const [a,o]=await Promise.all([tradeFetch('/trade/account'),tradeFetch('/trade/orders')]);
-    const acc=Array.isArray(a.account)?(a.account[0]||{}):(a.account||a);
-    e.tag.className='tag ok';e.tag.textContent='SIMULATE・認証済';
-    e.account.innerHTML=`<b>総資産 $${Number(acc.total_assets||0).toLocaleString()}</b><span>買付余力 $${Number(acc.power||0).toLocaleString()} / 現金 $${Number(acc.us_cash||acc.cash||0).toLocaleString()}</span>`;
-    const orders=Array.isArray(o.orders)?o.orders:Array.isArray(o.data)?o.data:[];
-    e.orders.innerHTML=orders.length?orders.slice().reverse().slice(0,20).map(x=>`<div class="trade-order"><b>${esc(String(x.code||'').replace(/^US\./,''))} ${esc(x.trd_side||x.side||'')}</b><span>${esc(x.order_status||x.status||'')}・${Number(x.qty||0)}株 @ $${Number(x.price||0).toFixed(2)}</span></div>`).join(''):'<div class="sub">デモ注文はまだありません。</div>';
-  }catch(err){e.tag.className='tag warn';e.tag.textContent='接続失敗';e.account.textContent=`🔴 ${err.message}`;}
+  const paper=(data.tradeHistory||[]).filter(x=>x.mode==='LOCAL_PAPER_V082');
+  const reviewed=paper.filter(x=>Number.isFinite(Number(x.reviewPrice))&&Number(x.reviewPrice)>0);
+  const gains=reviewed.map(x=>(x.side==='BUY'?1:-1)*(Number(x.reviewPrice)-Number(x.price))*Number(x.qty));
+  const wins=gains.filter(v=>v>0).length;
+  e.tag.className='tag ok';e.tag.textContent='LOCAL PAPER・発注なし';
+  e.account.innerHTML=`<b>仮想承認 ${paper.length}件 / 検証済 ${reviewed.length}件</b><span>検証勝率：${reviewed.length?(wins/reviewed.length*100).toFixed(1)+'%':'未集計'} / 仮想損益合計：${reviewed.length?'$'+gains.reduce((a,b)=>a+b,0).toFixed(2):'未集計'}</span><div class="sub">端末内にのみ保存。売買成立や実現損益を表すものではありません。旧moomooデモ履歴は変更しません。</div>`;
+  e.orders.innerHTML=paper.length?paper.slice().reverse().slice(0,40).map(x=>{
+    const reviewed=Number(x.reviewPrice)>0;const pnl=reviewed?(x.side==='BUY'?1:-1)*(Number(x.reviewPrice)-Number(x.price))*Number(x.qty):null;
+    return `<div class="trade-order"><b>${esc(x.ticker)} ${esc(x.side)}・${Number(x.qty)}株 @ $${Number(x.price).toFixed(2)}</b><span>${esc(new Date(x.approvedAt).toLocaleString('ja-JP'))} / ${reviewed?'仮想損益 $'+pnl.toFixed(2):'未検証'}</span><div class="sub">${esc(x.reason||'')}</div><label>検証時の株価 ($)<input type="number" class="paper-review-price" data-paper-id="${esc(x.id)}" min="0.01" step="0.01" value="${reviewed?Number(x.reviewPrice):''}" placeholder="後日確認した価格を入力"></label><button class="small-btn paper-review-btn" data-paper-id="${esc(x.id)}">検証価格を記録</button></div>`;
+  }).join(''):'<div class="sub">仮想承認の履歴はまだありません。</div>';
+  e.orders.querySelectorAll('.paper-review-btn').forEach(btn=>btn.addEventListener('click',()=>{
+    const id=btn.dataset.paperId;const item=(data.tradeHistory||[]).find(x=>x.id===id&&x.mode==='LOCAL_PAPER_V082');
+    const input=Array.from(e.orders.querySelectorAll('.paper-review-price')).find(el=>el.dataset.paperId===id);
+    const price=Number(input?.value);if(!item||!Number.isFinite(price)||price<=0){alert('正の検証価格を入力してください。');return;}
+    item.reviewPrice=price;item.reviewedAt=new Date().toISOString();save();refreshTradePanel();
+  }));
 }
-// v0.79: Bridgeの相場更新時刻を検証し、保有なし銘柄も新規買い候補として表示。
 let tradeQuoteRequest=0;
 async function makeTradeProposal(){
   const e=tradeEls(),ticker=normalizeTicker(e.ticker?.value||'');
@@ -1023,28 +1017,27 @@ async function makeTradeProposal(){
     `<div class="sub">参考リスク：現在値から2%の値幅は1株あたり約${Number.isFinite(estimatedRisk)?'$'+estimatedRisk.toFixed(2):'不明'}（損失上限の保証ではありません）</div>`;
   currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,quoteTimeUtc:quote?.quoteTimeUtc||null,createdAt:new Date().toISOString()};
   e.proposal.className='trade-proposal';
-  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${analysis}<div class="sub">取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明'} / 鮮度：${fresh?'15分以内':'未確認・時間外・遅延の可能性'}</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" max="10" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ 内容を確認してデモ発注</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔐 Worker認証経由・moomoo SIMULATE専用 / AI予測・自動発注ではありません</div>`;
+  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${analysis}<div class="sub">取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明'} / 鮮度：${fresh?'15分以内':'未確認・時間外・遅延の可能性'}</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" max="10" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ 提案を承認して仮想記録</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔒 アプリ内のみで記録 / moomooへの注文送信なし / ルール判定（AI予測ではありません）</div>`;
   document.querySelector('#approveDemoOrderBtn')?.addEventListener('click',placeApprovedDemoOrder);
 }
 
 async function placeApprovedDemoOrder(){
   if(!currentTradeProposal||currentTradeProposal.side==='WAIT')return;
-  const qty=Number(document.querySelector('#tradeQty')?.value),price=Number(document.querySelector('#tradePrice')?.value);if(!Number.isInteger(qty)||qty<1||qty>10||!Number.isFinite(price)||price<=0){alert('数量は1～10株、指値は正の数値にしてください。');return;}
-  if(!currentTradeProposal.quoteTimeUtc||Date.now()-Date.parse(currentTradeProposal.quoteTimeUtc)>15*60*1000){alert('株価が古いため再分析してください。');return;}
-  if(!confirm(`moomooデモ口座へ発注します。\n${currentTradeProposal.ticker} ${currentTradeProposal.side}\n${qty}株 @ $${price.toFixed(2)}\n\n※実口座には発注しません。`))return;
-  const btn=document.querySelector('#approveDemoOrderBtn');if(btn)btn.disabled=true;
-  try{
-    const clientRequestId=`${Date.now()}-${Math.random().toString(36).slice(2,10)}`;
-    const r=await tradeFetch('/trade/order',{method:'POST',body:JSON.stringify({code:`US.${currentTradeProposal.ticker}`,side:currentTradeProposal.side,qty,price,clientRequestId})});
-    data.tradeHistory=data.tradeHistory||[];data.tradeHistory.push({...currentTradeProposal,qty,price,result:r,approvedAt:new Date().toISOString(),mode:'SIMULATE',clientRequestId});save();
-    alert('✅ moomooデモ注文を送信しました。');await refreshTradePanel();
-  }catch(err){alert(`デモ発注失敗：${err.message}`)}finally{if(btn)btn.disabled=false;}
+  const qty=Number(document.querySelector('#tradeQty')?.value),price=Number(document.querySelector('#tradePrice')?.value);
+  if(!Number.isInteger(qty)||qty<1||qty>10||!Number.isFinite(price)||price<=0){alert('数量は1～10株、参考価格は正の数値にしてください。');return;}
+  const quoteMs=Date.parse(currentTradeProposal.quoteTimeUtc||'');
+  if(!Number.isFinite(quoteMs)||Math.abs(Date.now()-quoteMs)>15*60*1000){alert('株価の鮮度を確認できません。再分析してください。');return;}
+  if(!confirm(`アプリ内に仮想売買判断を記録します。\n${currentTradeProposal.ticker} ${currentTradeProposal.side}\n${qty}株 @ $${price.toFixed(2)}\n\n実際の注文・約定は一切発生しません。`))return;
+  const record={...currentTradeProposal,qty,price,id:`paper-${Date.now()}-${Math.random().toString(36).slice(2,10)}`,approvedAt:new Date().toISOString(),mode:'LOCAL_PAPER_V082',status:'HYPOTHETICAL_NOT_EXECUTED'};
+  data.tradeHistory=data.tradeHistory||[];data.tradeHistory.push(record);
+  try{save();}catch(err){data.tradeHistory.pop();alert('端末への保存に失敗しました：'+err.message);return;}
+  currentTradeProposal=null;const e=tradeEls();if(e.proposal)e.proposal.textContent='仮想判断を保存しました。次の提案は「提案を作る」から取得してください。';
+  refreshTradePanel();alert('✅ 仮想判断を端末に保存しました。moomooへ注文は送っていません。');
 }
 document.querySelector('#refreshTradeBtn')?.addEventListener('click',refreshTradePanel);
 document.querySelector('#makeTradeProposalBtn')?.addEventListener('click',makeTradeProposal);
-document.querySelector('[data-tab="trade"]')?.addEventListener('click',()=>setTimeout(fillTradeTickers,50));
+document.querySelector('[data-tab="trade"]')?.addEventListener('click',()=>setTimeout(refreshTradePanel,50));
 fillTradeTickers();
-
 document.querySelector('#resetBtn').onclick=()=>{if(confirm('保有株・監視株を含む全データを初期化しますか？')){data=clone(seed);save();render();runStartupResearch();}};
 
 ensureInitialHistory();
