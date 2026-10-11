@@ -12,7 +12,7 @@
   <header class="topbar">
     <div>
       <div class="eyebrow">無料運用モード</div>
-      <h1>相棒 STOCK <span class="version">v0.80</span></h1>
+      <h1>相棒 STOCK <span class="version">v0.81</span></h1>
     </div>
     <button id="notifyBtn" class="icon-btn" aria-label="通知テスト">🔔</button>
   </header>
@@ -147,7 +147,7 @@
     </section>
 
     <section id="settings" class="panel">
-      <div class="section-head"><div><h2>設定</h2><p>v0.80 無料運用モード</p></div></div>
+      <div class="section-head"><div><h2>設定</h2><p>v0.81 無料運用モード</p></div></div>
       <div class="card settings-card">
         <div class="setting-row"><span>PayPay保有株</span><span class="tag ok">簡単更新</span></div>
         <div class="setting-row"><span>保有株入力</span><span class="tag ok">手動併用</span></div>
@@ -202,6 +202,7 @@
       <div id="holdingHistoryMeta" class="history-summary"></div>
       <div id="holdingHistoryChart" class="history-chart large"></div>
       <div id="holdingHistoryEmpty" class="chart-empty">まだ履歴がありません。評価額を更新すると記録されます。</div>
+      <div style="margin-top:16px"><button type="button" id="loadMoomooPriceHistory" class="mini-btn" hidden>📈 moomoo株価履歴を取得（SPXL / AMZU）</button><div id="moomooPriceHistoryStatus" class="dialog-note" aria-live="polite"></div><div id="moomooPriceHistoryChart" class="history-chart large"></div></div>
     </div>
   </dialog>
 
@@ -247,6 +248,6 @@
     </form>
   </dialog>
 
-  <script src="app.js?v=0.80"></script>
+  <script src="app.js?v=0.81"></script>
 </body>
 </html>
