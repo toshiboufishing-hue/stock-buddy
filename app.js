@@ -1,4 +1,4 @@
-const APP_VERSION='0.82';
+const APP_VERSION='0.83';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],tradeHistory:[],settings:{moomooBridgeUrl:''},research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -963,6 +963,30 @@ function refreshTradePanel(){
     item.reviewPrice=price;item.reviewedAt=new Date().toISOString();save();refreshTradePanel();
   }));
 }
+// v0.83: deterministic technical indicators from authenticated historical closes.
+function technicalIndicators(bars){
+  const ordered=(Array.isArray(bars)?bars:[]).filter(b=>/^\d{4}-\d{2}-\d{2}$/.test(b.date||'')&&Number.isFinite(+b.close)&&+b.close>0).sort((a,b)=>a.date.localeCompare(b.date));
+  const unique=ordered.filter((b,i)=>i===ordered.length-1||b.date!==ordered[i+1].date);
+  const closes=unique.map(b=>+b.close), n=closes.length;
+  if(n<35)return {ok:false,count:n,reason:'MACD計算には35営業日以上の履歴が必要です'};
+  const avg=k=>closes.slice(-k).reduce((a,b)=>a+b,0)/k;
+  const ema=(arr,period)=>{const alpha=2/(period+1);let v=arr[0];return arr.map((x,i)=>{v=i===0?x:v+alpha*(x-v);return v;});};
+  const fast=ema(closes,12),slow=ema(closes,26),macdSeries=fast.map((x,i)=>x-slow[i]),signalSeries=ema(macdSeries,9);
+  let gain=0,loss=0;for(let i=n-14;i<n;i++){const d=closes[i]-closes[i-1];gain+=Math.max(0,d);loss+=Math.max(0,-d);}
+  const rsi=loss===0?(gain===0?50:100):100-100/(1+gain/loss);
+  return {ok:true,count:n,lastDate:unique[n-1].date,last:closes[n-1],sma5:avg(5),sma20:avg(20),rsi,macd:macdSeries[n-1],signal:signalSeries[n-1],histogram:macdSeries[n-1]-signalSeries[n-1]};
+}
+function technicalAssessment(ind){
+  if(!ind.ok)return {bias:'WAIT',score:0,notes:[ind.reason]};
+  const notes=[];let score=0;
+  if(ind.sma5>ind.sma20){score++;notes.push('5日線が20日線より上（短期上向き）');}else{score--;notes.push('5日線が20日線以下（短期弱含み）');}
+  if(ind.last>ind.sma20){score++;notes.push('終値が20日線より上');}else{score--;notes.push('終値が20日線以下');}
+  if(ind.histogram>0){score++;notes.push('MACDがシグナルを上回る');}else{score--;notes.push('MACDがシグナル以下');}
+  if(ind.rsi>=70){score--;notes.push('RSI70以上・過熱に注意');}
+  else if(ind.rsi<=30){notes.push('RSI30以下・売られすぎ圏（反転保証なし）');}
+  else notes.push('RSIは中立圏');
+  return {bias:score>=3?'BUY':score<=-3?'SELL':'WAIT',score,notes};
+}
 let tradeQuoteRequest=0;
 async function makeTradeProposal(){
   const e=tradeEls(),ticker=normalizeTicker(e.ticker?.value||'');
@@ -971,7 +995,7 @@ async function makeTradeProposal(){
   currentTradeProposal=null;
   e.proposal.className='trade-proposal';
   e.proposal.textContent=`${ticker} のmoomoo株価を取得中…`;
-  let quote=null,quoteError='';
+  let quote=null,quoteError='',historyError='',technical={ok:false,reason:'株価履歴未取得'},techView={bias:'WAIT',score:0,notes:[]};
   try{
     // v0.82.1: use the authenticated read-only Worker relay, not the removed direct Bridge URL helper.
     const payload=await moomooReadFetch('/quotes');
@@ -979,12 +1003,15 @@ async function makeTradeProposal(){
     quote=payload.quotes.find(q=>normalizeTicker(q.ticker||String(q.code||'').replace(/^US\./i,''))===ticker)||null;
     if(!quote)throw new Error(`${ticker} の価格が応答にありません`);
   }catch(err){quoteError=String(err?.message||err);}
+  try{
+    const hist=await moomooReadFetch('/history?symbol='+encodeURIComponent(ticker));
+    technical=technicalIndicators(hist?.bars);
+    techView=technicalAssessment(technical);
+  }catch(err){historyError=String(err?.message||err);technical={ok:false,reason:'履歴取得失敗：'+historyError};techView=technicalAssessment(technical);}
   if(request!==tradeQuoteRequest||e.ticker?.value!==ticker)return;
   const price=Number(quote?.price);
   const hasPrice=Number.isFinite(price)&&price>0;
   const h=(data.holdings||[]).find(x=>String(x.market||'JP').toUpperCase()==='US'&&normalizeTicker(String(x.ticker||'').replace(/^US\./i,''))===ticker);
-  // v0.80: explainable one-session research signal, not an AI prediction.
-  // Do not infer moving averages or news sentiment from a single quote.
   const prev=Number(quote?.prevClose);
   const dailyPct=hasPrice&&Number.isFinite(prev)&&prev>0?(price/prev-1)*100:NaN;
   const quoteAt=quote?.quoteTimeUtc||quote?.updateTime||null;
@@ -994,25 +1021,33 @@ async function makeTradeProposal(){
   const sig=h?deriveSignal(h):'wait';
   let side='WAIT',assessment='様子見',reason='';
   if(!hasPrice){reason=`価格を取得できません：${quoteError||'データなし'}`;}
-  else if(!Number.isFinite(dailyPct)){reason='前日終値が取得できないため、値動きの判定はできません。';}
-  else if(!h){
-    assessment=dailyPct>=0.5&&dailyPct<=2.5?'買い候補を監視':dailyPct < -2.5?'下落警戒':'様子見';
-    reason=`未保有銘柄。前日比${dailyPct>=0?'+':''}${dailyPct.toFixed(2)}%。単日変動だけでは新規買いの根拠が足りないため、買い注文は提案しません。`;
-  }else if(sig==='escape'){
-    assessment='売却候補';side='SELL';reason='登録済み保有情報の損失警戒条件に該当。売却を検討するためのデモ案です。';
-  }else if(sig==='take'){
-    assessment='利益確定候補';side='SELL';reason='登録済み保有情報の利確確認条件に該当。利益確定を検討するためのデモ案です。';
+  else if(!technical.ok){reason=`テクニカル分析不可：${technical.reason}。根拠不足のため承認候補を出しません。`;}
+  else if(!Number.isFinite(dailyPct)){reason='前日終値が不明のため承認候補を出しません。';}
+  else if(technical.bias==='BUY' && sig!=='escape' && sig!=='take'){
+    assessment='テクニカル買い候補';side='BUY';reason=`移動平均・MACDが上向きで、RSIを含めた試作スコア ${techView.score}。将来の上昇を保証しません。`;
+  }else if(technical.bias==='SELL' && h){
+    assessment='テクニカル売却候補';side='SELL';reason=`移動平均・MACDが弱含みで、試作スコア ${techView.score}。保有株のリスク確認用です。`;
+  }else if(h&&(sig==='escape'||sig==='take')){
+    assessment='保有株の売却確認';side='SELL';reason=`保有株の${sig==='escape'?'損失警戒':'利確確認'}条件に該当。テクニカルと併せて確認してください。`;
   }else{
-    assessment=dailyPct < -2.5?'下落警戒':'保有・様子見';
-    reason=`登録済み保有情報では強い売却条件なし。前日比${dailyPct>=0?'+':''}${dailyPct.toFixed(2)}%。`;
+    assessment='様子見';reason=`テクニカル試作スコア ${techView.score}。買い・売りの根拠が一致していません。`;
+  }
+  // Daily history may be older than the live quote. Never treat a historical close as live execution price.
+  if(technical.ok && quoteAt && technical.lastDate){
+    const quoteDate=new Date(quoteAt);
+    const histDate=technical.lastDate;
+    if(Number.isFinite(quoteDate.getTime()) && (quoteDate.getTime()-Date.parse(histDate+'T23:59:59Z'))>5*86400000){
+      side='WAIT';reason+=' 日足履歴が古いため判断を保留します。';
+    }
   }
   if(!fresh){side='WAIT';reason+=' 株価の更新が15分以内と確認できないため、発注は保留します。';}
   const riskPct=2;
   const estimatedRisk=hasPrice?price*riskPct/100:NaN;
-  const analysis=`<div class="sub">判定：<b>${esc(assessment)}</b>（単日値動き・登録済み保有情報に基づく試作ルール）</div>`+
+  const techSummary=technical.ok?`<div class="sub"><b>テクニカル分析（${technical.count}営業日・最終 ${esc(technical.lastDate)}）</b><br>5日平均 $${technical.sma5.toFixed(2)} / 20日平均 $${technical.sma20.toFixed(2)}<br>RSI(14) ${technical.rsi.toFixed(1)} / MACD ${technical.macd.toFixed(3)} / シグナル ${technical.signal.toFixed(3)}<br>試作スコア ${techView.score}：${techView.notes.map(esc).join('・')}</div>`:`<div class="sub">テクニカル分析不可：${esc(technical.reason)}</div>`;
+  const analysis=`<div class="sub">判定：<b>${esc(assessment)}</b>（履歴データによるルール判定・AI予測ではありません）</div>`+techSummary+
     `<div class="sub">前日終値：${Number.isFinite(prev)&&prev>0?'$'+prev.toFixed(2):'不明'} / 前日比：${Number.isFinite(dailyPct)?(dailyPct>=0?'+':'')+dailyPct.toFixed(2)+'%':'不明'}</div>`+
     `<div class="sub">参考リスク：現在値から2%の値幅は1株あたり約${Number.isFinite(estimatedRisk)?'$'+estimatedRisk.toFixed(2):'不明'}（損失上限の保証ではありません）</div>`;
-  currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,quoteTimeUtc:quote?.quoteTimeUtc||null,createdAt:new Date().toISOString()};
+  currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,technical:technical.ok?technical:null,technicalScore:techView.score,quoteTimeUtc:quote?.quoteTimeUtc||null,createdAt:new Date().toISOString()};
   e.proposal.className='trade-proposal';
   e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${analysis}<div class="sub">取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明'} / 鮮度：${fresh?'15分以内':'未確認・時間外・遅延の可能性'}</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" max="10" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ 提案を承認して仮想記録</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔒 アプリ内のみで記録 / moomooへの注文送信なし / ルール判定（AI予測ではありません）</div>`;
   document.querySelector('#approveDemoOrderBtn')?.addEventListener('click',placeApprovedDemoOrder);
