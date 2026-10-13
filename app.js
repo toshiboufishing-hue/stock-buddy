@@ -1,4 +1,4 @@
-const APP_VERSION='0.83';
+const APP_VERSION='0.84';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],tradeHistory:[],settings:{moomooBridgeUrl:''},research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -963,6 +963,51 @@ function refreshTradePanel(){
     item.reviewPrice=price;item.reviewedAt=new Date().toISOString();save();refreshTradePanel();
   }));
 }
+// v0.84: NYSE regular-session calendar (Eastern Time, including DST).
+// Source: https://www.nyse.com/markets/hours-calendars (2026-2028 published schedule).
+// Calendar is intentionally finite: unsupported years and unexpected closures fail closed.
+// This is a regular-session estimate, NOT an exchange-provided real-time market status.
+const NYSE_HOLIDAYS={
+  2026:['01-01','01-19','02-16','04-03','05-25','06-19','07-03','09-07','11-26','12-25'],
+  2027:['01-01','01-18','02-15','03-26','05-31','06-18','07-05','09-06','11-25','12-24'],
+  2028:['01-17','02-21','04-14','05-29','06-19','07-04','09-04','11-23','12-25']
+};
+const NYSE_EARLY_CLOSE={
+  2026:['11-27','12-24'],
+  2027:['11-26'],
+  2028:['07-03','11-24']
+};
+const NYSE_TIME_FORMATTER=new Intl.DateTimeFormat('en-US',{
+  timeZone:'America/New_York',year:'numeric',month:'2-digit',day:'2-digit',
+  weekday:'short',hour:'2-digit',minute:'2-digit',hourCycle:'h23'
+});
+function usRegularMarketState(nowMs=Date.now()){
+  if(!Number.isFinite(nowMs))return {isOpen:false,status:'unknown',label:'時刻を確認できません',et:'不明'};
+  const parts=Object.fromEntries(NYSE_TIME_FORMATTER.formatToParts(new Date(nowMs)).map(x=>[x.type,x.value]));
+  const year=Number(parts.year),dayKey=`${parts.month}-${parts.day}`;
+  const et=`${parts.year}-${dayKey} ${parts.hour}:${parts.minute} ET`;
+  const base={et,isOpen:false,sessionClose:'16:00 ET'};
+  if(!Object.hasOwn(NYSE_HOLIDAYS,year))return {...base,status:'unknown',label:'取引所カレンダー未対応（要確認）'};
+  if(parts.weekday==='Sat'||parts.weekday==='Sun')return {...base,status:'weekend',label:'米国市場は週末休場'};
+  if(NYSE_HOLIDAYS[year].includes(dayKey))return {...base,status:'holiday',label:'米国市場は祝日休場'};
+  const early=NYSE_EARLY_CLOSE[year].includes(dayKey);
+  const close=early?13*60:16*60;
+  const minute=Number(parts.hour)*60+Number(parts.minute);
+  const sessionClose=early?'13:00 ET':'16:00 ET';
+  if(minute<9*60+30)return {...base,status:'premarket',label:'米国市場は通常取引開始前',sessionClose};
+  if(minute>=close)return {...base,status:'afterhours',label:early?'米国市場は短縮取引終了後':'米国市場は通常取引終了後',sessionClose};
+  return {...base,isOpen:true,status:'open',label:early?'米国市場は通常取引中（短縮日）':'米国市場は通常取引中',sessionClose};
+}
+function assessTradeQuoteTime(quoteTimeUtc,market,nowMs=Date.now()){
+  const quoteMs=typeof quoteTimeUtc==='string'&&quoteTimeUtc.trim()?Date.parse(quoteTimeUtc):NaN;
+  const ageMs=nowMs-quoteMs;
+  const valid=Number.isFinite(quoteMs)&&Number.isFinite(ageMs)&&ageMs>=-60000;
+  const ageLabel=valid?(ageMs<60000?'1分未満':Math.floor(ageMs/60000)+'分前'):'時刻不明・未来時刻';
+  if(!market.isOpen)return {fresh:false,ageLabel,reason:`${market.label}のため、仮想承認を保留します。最終取引価格は分析参考値です。`};
+  if(!valid)return {fresh:false,ageLabel,reason:'株価の更新時刻を検証できないため、仮想承認を保留します。'};
+  if(ageMs>=15*60*1000)return {fresh:false,ageLabel,reason:'開場中ですが株価の更新から15分以上経過しているため、仮想承認を保留します。'};
+  return {fresh:true,ageLabel,reason:''};
+}
 // v0.83: deterministic technical indicators from authenticated historical closes.
 function technicalIndicators(bars){
   const ordered=(Array.isArray(bars)?bars:[]).filter(b=>/^\d{4}-\d{2}-\d{2}$/.test(b.date||'')&&Number.isFinite(+b.close)&&+b.close>0).sort((a,b)=>a.date.localeCompare(b.date));
@@ -1015,9 +1060,9 @@ async function makeTradeProposal(){
   const prev=Number(quote?.prevClose);
   const dailyPct=hasPrice&&Number.isFinite(prev)&&prev>0?(price/prev-1)*100:NaN;
   const quoteAt=quote?.quoteTimeUtc||quote?.updateTime||null;
-  const quoteMs=quote?.quoteTimeUtc?Date.parse(quote.quoteTimeUtc):NaN;
-  const ageMs=Date.now()-quoteMs;
-  const fresh=Number.isFinite(ageMs)&&ageMs>=-60000&&ageMs<15*60*1000;
+  const market=usRegularMarketState();
+  const freshness=assessTradeQuoteTime(quote?.quoteTimeUtc,market);
+  const fresh=freshness.fresh;
   const sig=h?deriveSignal(h):'wait';
   let side='WAIT',assessment='様子見',reason='';
   if(!hasPrice){reason=`価格を取得できません：${quoteError||'データなし'}`;}
@@ -1040,7 +1085,7 @@ async function makeTradeProposal(){
       side='WAIT';reason+=' 日足履歴が古いため判断を保留します。';
     }
   }
-  if(!fresh){side='WAIT';reason+=' 株価の更新が15分以内と確認できないため、発注は保留します。';}
+  if(!fresh){side='WAIT';reason+=' '+freshness.reason;}
   const riskPct=2;
   const estimatedRisk=hasPrice?price*riskPct/100:NaN;
   const techSummary=technical.ok?`<div class="sub"><b>テクニカル分析（${technical.count}営業日・最終 ${esc(technical.lastDate)}）</b><br>5日平均 $${technical.sma5.toFixed(2)} / 20日平均 $${technical.sma20.toFixed(2)}<br>RSI(14) ${technical.rsi.toFixed(1)} / MACD ${technical.macd.toFixed(3)} / シグナル ${technical.signal.toFixed(3)}<br>試作スコア ${techView.score}：${techView.notes.map(esc).join('・')}</div>`:`<div class="sub">テクニカル分析不可：${esc(technical.reason)}</div>`;
@@ -1049,7 +1094,7 @@ async function makeTradeProposal(){
     `<div class="sub">参考リスク：現在値から2%の値幅は1株あたり約${Number.isFinite(estimatedRisk)?'$'+estimatedRisk.toFixed(2):'不明'}（損失上限の保証ではありません）</div>`;
   currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,technical:technical.ok?technical:null,technicalScore:techView.score,quoteTimeUtc:quote?.quoteTimeUtc||null,createdAt:new Date().toISOString()};
   e.proposal.className='trade-proposal';
-  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${analysis}<div class="sub">取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明'} / 鮮度：${fresh?'15分以内':'未確認・時間外・遅延の可能性'}</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" max="10" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ 提案を承認して仮想記録</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔒 アプリ内のみで記録 / moomooへの注文送信なし / ルール判定（AI予測ではありません）</div>`;
+  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${analysis}<div class="sub"><b>米国市場：${esc(market.label)}</b>（${esc(market.et)} / 通常取引終了 ${esc(market.sessionClose)}）<br>取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明'}<br>株価の経過：${esc(freshness.ageLabel)} / 鮮度：${fresh?'15分以内（時刻上の判定）':esc(market.isOpen?'更新遅延・時刻未確認':'時間外・休場')}<br>※市場状態はNYSE公表カレンダーからの推定。臨時休場・データ遅延の保証はありません。</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" max="10" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ 提案を承認して仮想記録</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔒 アプリ内のみで記録 / moomooへの注文送信なし / ルール判定（AI予測ではありません）</div>`;
   document.querySelector('#approveDemoOrderBtn')?.addEventListener('click',placeApprovedDemoOrder);
 }
 
@@ -1057,8 +1102,10 @@ async function placeApprovedDemoOrder(){
   if(!currentTradeProposal||currentTradeProposal.side==='WAIT')return;
   const qty=Number(document.querySelector('#tradeQty')?.value),price=Number(document.querySelector('#tradePrice')?.value);
   if(!Number.isInteger(qty)||qty<1||qty>10||!Number.isFinite(price)||price<=0){alert('数量は1～10株、参考価格は正の数値にしてください。');return;}
-  const quoteMs=Date.parse(currentTradeProposal.quoteTimeUtc||'');
-  if(!Number.isFinite(quoteMs)||Math.abs(Date.now()-quoteMs)>15*60*1000){alert('株価の鮮度を確認できません。再分析してください。');return;}
+  // Recheck session and freshness at the moment of approval; no real orders are sent.
+  const market=usRegularMarketState();
+  const freshness=assessTradeQuoteTime(currentTradeProposal.quoteTimeUtc,market);
+  if(!freshness.fresh){alert(freshness.reason+' 再分析してください。');return;}
   if(!confirm(`アプリ内に仮想売買判断を記録します。\n${currentTradeProposal.ticker} ${currentTradeProposal.side}\n${qty}株 @ $${price.toFixed(2)}\n\n実際の注文・約定は一切発生しません。`))return;
   const record={...currentTradeProposal,qty,price,id:`paper-${Date.now()}-${Math.random().toString(36).slice(2,10)}`,approvedAt:new Date().toISOString(),mode:'LOCAL_PAPER_V082',status:'HYPOTHETICAL_NOT_EXECUTED'};
   data.tradeHistory=data.tradeHistory||[];data.tradeHistory.push(record);
