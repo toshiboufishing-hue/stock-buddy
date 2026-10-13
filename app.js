@@ -1,4 +1,4 @@
-const APP_VERSION='0.84';
+const APP_VERSION='0.85';
 const STORAGE_KEY='stockBuddyDataV02';
 const seed={holdings:[],radar:[],portfolioHistory:[],snsHistory:[],moomooImports:[],tradeHistory:[],settings:{moomooBridgeUrl:''},research:{lastRun:null,lastSummary:null}};
 const clone=o=>JSON.parse(JSON.stringify(o));
@@ -149,19 +149,26 @@ function setupCompanyLookup(tickerId,nameId,marketId){
 
 // v0.59: 市場データの鮮度管理（自動株価取得の受け皿）
 function isoNow(){return new Date().toISOString();}
+// v0.85: quoteUpdatedAt is the market quote time, not the HTTP retrieval time.
+// Legacy moomoo entries and screenshot imports have no verified exchange timestamp.
 function quoteMeta(h={}){
-  const at=h.quoteUpdatedAt||h.updatedAt||(Array.isArray(h.history)&&h.history.length?h.history[h.history.length-1].at:null);
   const source=h.quoteSource||'manual';
   const failed=h.quoteStatus==='failed';
-  const ageMs=at?Date.now()-new Date(at).getTime():Infinity;
+  const isMoomoo=source==='moomoo';
+  const capturedAt=isMoomoo?h.quoteCapturedAt||null:null;
+  const verified=isMoomoo?h.quoteTimeVerified===true:true;
+  const at=verified?(h.quoteUpdatedAt||h.updatedAt||(Array.isArray(h.history)&&h.history.length?h.history[h.history.length-1].at:null)):null;
+  const ageMs=at?Date.now()-Date.parse(at):NaN;
   const ageMin=ageMs/60000;
   let level='yellow',label='手入力';
   if(failed){level='red';label='取得失敗';}
-  else if(source!=='manual' && ageMin<=5){level='green';label='最新';}
-  else if(source!=='manual' && ageMin<=30){level='yellow';label='遅延';}
-  else if(source!=='manual' && ageMin>30){level='red';label='古い';}
-  else if(source==='manual' && ageMin>1440){level='red';label='手入力・古い';}
-  return {at,source,level,label,ageMin};
+  else if(!verified || (isMoomoo&&!Number.isFinite(ageMs))){label='時刻未確認';}
+  else if(isMoomoo&&h.market==='US'&&!usRegularMarketState().isOpen){label='時間外・休場';}
+  else if(source!=='manual'&&Number.isFinite(ageMin)&&ageMin>=-1&&ageMin<=5){level='green';label='更新5分以内';}
+  else if(source!=='manual'&&Number.isFinite(ageMin)&&ageMin>=-1&&ageMin<=30){label='遅延';}
+  else if(source!=='manual'){level='red';label='古い';}
+  else if(source==='manual'&&ageMin>1440){level='red';label='手入力・古い';}
+  return {at,source,level,label,ageMin,capturedAt};
 }
 function formatQuoteTime(iso){
   if(!iso)return'時刻なし';
@@ -227,9 +234,10 @@ async function refreshMoomooLocalQuotes(){
     ticker:normalizeTicker(q.ticker||String(q.code||'').replace(/^US\./i,'')),
     name:q.name||'',market:'US',price:Number(q.price),currency:q.currency||'USD',
     changePercent:Number(q.changePercent),leverage:paypayCourseInfo(q.ticker)?.leverage||1,
-    direction:paypayCourseInfo(q.ticker)?.direction||'normal',productType:'',confidence:100
+    direction:paypayCourseInfo(q.ticker)?.direction||'normal',productType:'',confidence:100,
+    quoteTimeUtc:q.quoteTimeUtc||null,updateTime:q.updateTime||null
   }));
-  const applied=applyMoomooQuotes(quotes,payload.capturedAt||isoNow());
+  const applied=applyMoomooQuotes(quotes,payload.capturedAt||isoNow(),{source:'opend'});
   applied.bridge={source:'worker'};return applied;
 }
 window.StockBuddyMoomoo={refresh:refreshMoomooLocalQuotes};
@@ -375,7 +383,7 @@ function renderHoldings(){
     const pinfo=productInfo(h);
     const reason=signalReason(h);
     const qm=quoteMeta(h);
-    el.innerHTML=`${important?'<div class="priority-banner">🚨 最重要・強制トップ</div>':''}<div class="compact-top"><div class="holding-main"><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}${Number.isFinite(+h.quotePrice)?`・現在値 ${currencyMoney(+h.quotePrice,h.quoteCurrency||marketQuoteCurrency(h.market))}`:''}</div></div><div class="holding-money"><div class="price">${currencyMoney(value,defaultValuationCurrency(h))}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${currencyMoney(pnl,defaultValuationCurrency(h))} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="quote-freshness ${qm.level}"><span class="fresh-dot"></span><b>${qm.label}</b><span>${formatQuoteTime(qm.at)}</span><small>${quoteSourceLabel(qm.source)}</small></div>${Number.isFinite(+h.referenceMovePct)&&Number.isFinite(+h.estimatedDailyMovePct)?`<div class="challenge-reference">📊 ${esc(h.underlyingLabel||h.referenceName||'原資産')} ${+h.referenceMovePct>=0?'+':''}${(+h.referenceMovePct).toFixed(2)}% → <b>${esc(h.ticker)} 日次目安 ${+h.estimatedDailyMovePct>=0?'+':''}${(+h.estimatedDailyMovePct).toFixed(2)}%</b><small>moomoo ${formatQuoteTime(h.referenceUpdatedAt)}・単純倍率目安</small></div>`:''}<div class="compact-status"><span class="direction ${dir[2]}"><b>${dir[0]}</b> ${dir[1]}</span><span class="signal ${s[2]}">${s[0]} ${s[1]}</span></div><div class="ai-comment ${important?'critical':''}"><span class="ai-label">AIコメント</span><strong>${esc(reason)}</strong></div><div class="compact-foot"><div class="product-tags">${h.accountCourse==='challenge'?`<span class="product-tag special">${esc(h.accountCourseLabel||'PayPayチャレンジ')}</span>`:''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div></div>`;
+    el.innerHTML=`${important?'<div class="priority-banner">🚨 最重要・強制トップ</div>':''}<div class="compact-top"><div class="holding-main"><div class="name">${esc(h.name)}</div><div class="sub">${esc(h.broker)}・${h.market==='US'?'米国':'日本'}・${esc(h.ticker)}${Number.isFinite(+h.quotePrice)?`・現在値 ${currencyMoney(+h.quotePrice,h.quoteCurrency||marketQuoteCurrency(h.market))}`:''}</div></div><div class="holding-money"><div class="price">${currencyMoney(value,defaultValuationCurrency(h))}</div><div class="sub ${pnl==null?'':(pnl>=0?'positive':'negative')}">${pnl==null?'損益未登録':`${pnl>=0?'+':''}${currencyMoney(pnl,defaultValuationCurrency(h))} (${pct>=0?'+':''}${pct.toFixed(1)}%)`}</div></div></div><div class="quote-freshness ${qm.level}"><span class="fresh-dot"></span><b>${qm.label}</b><span>${formatQuoteTime(qm.at)}</span><small>${quoteSourceLabel(qm.source)}${qm.capturedAt?'・受信 '+formatQuoteTime(qm.capturedAt):''}</small></div>${Number.isFinite(+h.referenceMovePct)&&Number.isFinite(+h.estimatedDailyMovePct)?`<div class="challenge-reference">📊 ${esc(h.underlyingLabel||h.referenceName||'原資産')} ${+h.referenceMovePct>=0?'+':''}${(+h.referenceMovePct).toFixed(2)}% → <b>${esc(h.ticker)} 日次目安 ${+h.estimatedDailyMovePct>=0?'+':''}${(+h.estimatedDailyMovePct).toFixed(2)}%</b><small>moomoo ${formatQuoteTime(h.referenceUpdatedAt)}・単純倍率目安</small></div>`:''}<div class="compact-status"><span class="direction ${dir[2]}"><b>${dir[0]}</b> ${dir[1]}</span><span class="signal ${s[2]}">${s[0]} ${s[1]}</span></div><div class="ai-comment ${important?'critical':''}"><span class="ai-label">AIコメント</span><strong>${esc(reason)}</strong></div><div class="compact-foot"><div class="product-tags">${h.accountCourse==='challenge'?`<span class="product-tag special">${esc(h.accountCourseLabel||'PayPayチャレンジ')}</span>`:''}<span class="product-tag ${['leveraged','inverse'].includes(pinfo.type)?'special':''}">${esc(pinfo.label)}</span></div><div class="card-actions"><button class="mini-btn history-holding" data-index="${i}">📈</button><button class="mini-btn edit-holding" data-index="${i}">編集</button><button class="mini-btn delete delete-holding" data-index="${i}">削除</button></div></div>`;
     list.appendChild(el);
   });
   document.querySelectorAll('.history-holding').forEach(b=>b.onclick=e=>{e.stopPropagation();openHoldingHistory(+b.dataset.index)});
@@ -554,6 +562,12 @@ function leverageFromQuote(q={}){
   if(leverage>1 && direction==='normal')direction='bull';
   return {leverage,direction};
 }
+// Only UTC/offset-qualified exchange timestamps may be used for freshness.
+function verifiedQuoteTimeUtc(value){
+  if(typeof value!=='string'||!/(?:Z|[+-]\d{2}:\d{2})$/i.test(value.trim()))return null;
+  const ms=Date.parse(value);
+  return Number.isFinite(ms)&&ms<=Date.now()+60000?new Date(ms).toISOString():null;
+}
 function normalizeMoomooQuote(q={}){
   const market=String(q.market||'').toUpperCase()==='JP'?'JP':'US';
   const price=Number(q.price);
@@ -564,7 +578,8 @@ function normalizeMoomooQuote(q={}){
     price:Number.isFinite(price)?price:null,currency:q.currency||(market==='JP'?'JPY':'USD'),
     changePercent:Number.isFinite(changePercent)?changePercent:null,
     leverage:lev.leverage,direction:lev.direction,
-    productType:lev.leverage>1?'leveraged':String(q.productType||'').toLowerCase(),confidence:Math.max(0,Math.min(100,Number(q.confidence)||0))
+    productType:lev.leverage>1?'leveraged':String(q.productType||'').toLowerCase(),confidence:Math.max(0,Math.min(100,Number(q.confidence)||0)),
+    quoteTimeUtc:verifiedQuoteTimeUtc(q.quoteTimeUtc),updateTime:String(q.updateTime||'')
   };
 }
 function fixMoomooPercentScale(quotes=[]){
@@ -577,7 +592,7 @@ function fixMoomooPercentScale(quotes=[]){
   }
   return quotes;
 }
-function applyMoomooQuotes(rawQuotes,capturedAt){
+function applyMoomooQuotes(rawQuotes,capturedAt,options={}){
   const quotes=fixMoomooPercentScale((Array.isArray(rawQuotes)?rawQuotes:[]).map(normalizeMoomooQuote).filter(q=>q.ticker&&q.price!=null&&q.price>=0));
   let holdingsUpdated=0,radarUpdated=0;
   const results=[];
@@ -590,7 +605,10 @@ function applyMoomooQuotes(rawQuotes,capturedAt){
       // moomooの米国ティッカーで一致した旧PayPayデータは市場区分だけ自動補正する。
       if(q.market==='US'&&isUsStyleTicker(q.ticker))h.market='US';
       h.quotePrice=q.price;h.quoteCurrency=q.currency||marketQuoteCurrency(q.market);
-      h.quoteUpdatedAt=at;h.quoteSource='moomoo';h.quoteStatus='ok';h.updatedAt=at;
+      // A screenshot's capture time is NOT an exchange quote time.
+      const marketAt=options.source==='opend'?q.quoteTimeUtc:null;
+      h.quoteUpdatedAt=marketAt;h.quoteCapturedAt=at;h.quoteTimeVerified=!!marketAt;
+      h.quoteSource='moomoo';h.quoteStatus='ok';h.updatedAt=at;
       const pc=paypayCourseInfo(q.ticker);
       if(pc){
         h.leverageFactor=pc.leverage;
@@ -608,7 +626,12 @@ function applyMoomooQuotes(rawQuotes,capturedAt){
       appendHoldingHistory(h);holdingsUpdated++;matched=true;
     }
     const r=radarMatchForQuote(q);
-    if(r){r.price=q.price;r.updatedAt=at;radarUpdated++;matched=true;}
+    if(r){
+      r.price=q.price;r.updatedAt=at;r.quoteCapturedAt=at;
+      r.quoteUpdatedAt=options.source==='opend'?q.quoteTimeUtc:null;
+      r.quoteTimeVerified=!!r.quoteUpdatedAt;
+      radarUpdated++;matched=true;
+    }
 
     // 原資産（例 .SPX / AMZN）しかスクショに無い場合、対応するPayPayチャレンジ保有へ日次騰落目安を反映。
     // SPXL/AMZUの「現在価格」は原資産価格から算出できないため、価格は上書きしない。
@@ -629,7 +652,8 @@ function applyMoomooQuotes(rawQuotes,capturedAt){
         target.referenceName=q.name||link.underlying;
         target.referenceMovePct=q.changePercent;
         target.estimatedDailyMovePct=estimated;
-        target.referenceUpdatedAt=at;
+        target.referenceUpdatedAt=options.source==='opend'?(q.quoteTimeUtc||null):null;
+        target.referenceCapturedAt=at;
         target.referenceSource='moomoo';
         target.updatedAt=at;
         mappedHoldings.push({ticker:link.ticker,estimatedMovePct:estimated,underlying:link.underlying});
@@ -999,7 +1023,8 @@ function usRegularMarketState(nowMs=Date.now()){
   return {...base,isOpen:true,status:'open',label:early?'米国市場は通常取引中（短縮日）':'米国市場は通常取引中',sessionClose};
 }
 function assessTradeQuoteTime(quoteTimeUtc,market,nowMs=Date.now()){
-  const quoteMs=typeof quoteTimeUtc==='string'&&quoteTimeUtc.trim()?Date.parse(quoteTimeUtc):NaN;
+  const verifiedTime=verifiedQuoteTimeUtc(quoteTimeUtc);
+  const quoteMs=verifiedTime?Date.parse(verifiedTime):NaN;
   const ageMs=nowMs-quoteMs;
   const valid=Number.isFinite(quoteMs)&&Number.isFinite(ageMs)&&ageMs>=-60000;
   const ageLabel=valid?(ageMs<60000?'1分未満':Math.floor(ageMs/60000)+'分前'):'時刻不明・未来時刻';
@@ -1040,11 +1065,12 @@ async function makeTradeProposal(){
   currentTradeProposal=null;
   e.proposal.className='trade-proposal';
   e.proposal.textContent=`${ticker} のmoomoo株価を取得中…`;
-  let quote=null,quoteError='',historyError='',technical={ok:false,reason:'株価履歴未取得'},techView={bias:'WAIT',score:0,notes:[]};
+  let quote=null,quoteCapturedAt=null,quoteError='',historyError='',technical={ok:false,reason:'株価履歴未取得'},techView={bias:'WAIT',score:0,notes:[]};
   try{
     // v0.82.1: use the authenticated read-only Worker relay, not the removed direct Bridge URL helper.
     const payload=await moomooReadFetch('/quotes');
     if(!payload?.ok||!Array.isArray(payload.quotes))throw new Error(payload?.error||'株価データ形式エラー');
+    quoteCapturedAt=payload.capturedAt||null;
     quote=payload.quotes.find(q=>normalizeTicker(q.ticker||String(q.code||'').replace(/^US\./i,''))===ticker)||null;
     if(!quote)throw new Error(`${ticker} の価格が応答にありません`);
   }catch(err){quoteError=String(err?.message||err);}
@@ -1059,9 +1085,9 @@ async function makeTradeProposal(){
   const h=(data.holdings||[]).find(x=>String(x.market||'JP').toUpperCase()==='US'&&normalizeTicker(String(x.ticker||'').replace(/^US\./i,''))===ticker);
   const prev=Number(quote?.prevClose);
   const dailyPct=hasPrice&&Number.isFinite(prev)&&prev>0?(price/prev-1)*100:NaN;
-  const quoteAt=quote?.quoteTimeUtc||quote?.updateTime||null;
+  const quoteAt=verifiedQuoteTimeUtc(quote?.quoteTimeUtc);
   const market=usRegularMarketState();
-  const freshness=assessTradeQuoteTime(quote?.quoteTimeUtc,market);
+  const freshness=assessTradeQuoteTime(quoteAt,market);
   const fresh=freshness.fresh;
   const sig=h?deriveSignal(h):'wait';
   let side='WAIT',assessment='様子見',reason='';
@@ -1092,9 +1118,9 @@ async function makeTradeProposal(){
   const analysis=`<div class="sub">判定：<b>${esc(assessment)}</b>（履歴データによるルール判定・AI予測ではありません）</div>`+techSummary+
     `<div class="sub">前日終値：${Number.isFinite(prev)&&prev>0?'$'+prev.toFixed(2):'不明'} / 前日比：${Number.isFinite(dailyPct)?(dailyPct>=0?'+':'')+dailyPct.toFixed(2)+'%':'不明'}</div>`+
     `<div class="sub">参考リスク：現在値から2%の値幅は1株あたり約${Number.isFinite(estimatedRisk)?'$'+estimatedRisk.toFixed(2):'不明'}（損失上限の保証ではありません）</div>`;
-  currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,technical:technical.ok?technical:null,technicalScore:techView.score,quoteTimeUtc:quote?.quoteTimeUtc||null,createdAt:new Date().toISOString()};
+  currentTradeProposal={ticker,side,qty:1,price:hasPrice?price:null,reason,technical:technical.ok?technical:null,technicalScore:techView.score,quoteTimeUtc:quoteAt,createdAt:new Date().toISOString()};
   e.proposal.className='trade-proposal';
-  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${analysis}<div class="sub"><b>米国市場：${esc(market.label)}</b>（${esc(market.et)} / 通常取引終了 ${esc(market.sessionClose)}）<br>取得元：${quote?'moomoo OpenD':'取得失敗'} / 更新時刻：${quoteAt?esc(String(quoteAt)):'不明'}<br>株価の経過：${esc(freshness.ageLabel)} / 鮮度：${fresh?'15分以内（時刻上の判定）':esc(market.isOpen?'更新遅延・時刻未確認':'時間外・休場')}<br>※市場状態はNYSE公表カレンダーからの推定。臨時休場・データ遅延の保証はありません。</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" max="10" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ 提案を承認して仮想記録</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔒 アプリ内のみで記録 / moomooへの注文送信なし / ルール判定（AI予測ではありません）</div>`;
+  e.proposal.innerHTML=`<div class="trade-proposal-side ${side.toLowerCase()}">${side}</div><b>${esc(ticker)} ${hasPrice?`@ $${price.toFixed(2)}`:'価格未取得'}</b><p>${esc(reason)}</p>${analysis}<div class="sub"><b>米国市場：${esc(market.label)}</b>（${esc(market.et)} / 通常取引終了 ${esc(market.sessionClose)}）<br>取得元：${quote?'moomoo OpenD':'取得失敗'} / 株価更新：${quoteAt?esc(formatQuoteTime(quoteAt)):'時刻未確認'} / 受信：${quoteCapturedAt?esc(formatQuoteTime(quoteCapturedAt)):'不明'}<br>株価の経過：${esc(freshness.ageLabel)} / 鮮度：${fresh?'更新15分以内（時刻上の判定・リアルタイム保証なし）':esc(market.isOpen?'更新遅延・時刻未確認':'時間外・休場')}<br>※市場状態はNYSE公表カレンダーからの推定。臨時休場・データ遅延の保証はありません。</div>${side!=='WAIT'?`<label>数量<input id="tradeQty" type="number" min="1" max="10" step="1" value="1"></label><label>指値<input id="tradePrice" type="number" min="0.01" step="0.01" value="${price.toFixed(2)}"></label><button id="approveDemoOrderBtn" class="primary full-btn">✅ 提案を承認して仮想記録</button>`:'<div class="sub">今回は発注しません。</div>'}<div class="trade-lock">🔒 アプリ内のみで記録 / moomooへの注文送信なし / ルール判定（AI予測ではありません）</div>`;
   document.querySelector('#approveDemoOrderBtn')?.addEventListener('click',placeApprovedDemoOrder);
 }
 
